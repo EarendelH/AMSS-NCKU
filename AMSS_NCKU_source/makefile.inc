@@ -1,10 +1,12 @@
 
-## filein  = -I/usr/include -I/usr/lib/x86_64-linux-gnu/mpich/include -I/usr/lib/x86_64-linux-gnu/openmpi/lib/ -I/usr/lib/gcc/x86_64-linux-gnu/11/ -I/usr/include/c++/11/
+## filein  = -I/usr/include -I/usr/lib/x86_64-linux-gnu/mpich/include -I/usr/lib/x86_64-linux-gnu/openmpi/lib/ -I/usr/lib/gcc/x86_64-linux-gnu/13/ -I/usr/include/c++/13/
 
-filein  = -I/usr/include/ -I/usr/lib/x86_64-linux-gnu/openmpi/include/ -I/usr/lib/x86_64-linux-gnu/openmpi/lib/ -I/usr/lib/gcc/x86_64-linux-gnu/11/ -I/usr/include/c++/11/ -I/usr/lib/cuda/include
+## CPU-only (no CUDA), e.g. for AMD W7900D without GPU build
+## filein: from mpic++ --showme:compile + system C++/gfortran
+filein  = -I/usr/include/ -I/usr/lib/x86_64-linux-gnu/openmpi/include -I/usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -I/usr/lib/gcc/x86_64-linux-gnu/13/ -I/usr/include/c++/13/
 
-## LDLIBS  = -L/usr/lib/x86_64-linux-gnu -lmpich -L/usr/lib64 -L/usr/lib/gcc/x86_64-linux-gnu/11 -lgfortran
-LDLIBS  = -L/usr/lib/x86_64-linux-gnu -L/usr/lib64 -L/usr/lib/gcc/x86_64-linux-gnu/11 -lgfortran -L/usr/lib/cuda/lib64 -lcudart -lmpi -lgfortran
+## LDLIBS: from mpic++ --showme:link (-lmpi_cxx -lmpi) + gfortran
+LDLIBS  = -L/usr/lib/x86_64-linux-gnu/openmpi/lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib64 -L/usr/lib/gcc/x86_64-linux-gnu/13 -lmpi_cxx -lmpi -lgfortran
 
 CXXAPPFLAGS  = -O3 -Wno-deprecated -Dfortran3 -Dnewc
 #f90appflags = -O3 -fpp
@@ -15,7 +17,7 @@ CXX          = g++
 CC           = gcc
 CLINKER      = mpic++ 
 
-Cu = nvcc
-CUDA_LIB_PATH = -L/usr/lib/cuda/lib64 -I/usr/include -I/usr/lib/cuda/include
-#CUDA_APP_FLAGS = -c -g -O3 --ptxas-options=-v -arch compute_13 -code compute_13,sm_13 -Dfortran3 -Dnewc
-CUDA_APP_FLAGS = -c -g -O3 --ptxas-options=-v -Dfortran3 -Dnewc
+## GPU (CUDA) not used for CPU-only build; uncomment and set paths if building ABEGPU
+# Cu = nvcc
+# CUDA_LIB_PATH = -L/usr/lib/cuda/lib64 -I/usr/include -I/usr/lib/cuda/include
+# CUDA_APP_FLAGS = -c -g -O3 --ptxas-options=-v -Dfortran3 -Dnewc
