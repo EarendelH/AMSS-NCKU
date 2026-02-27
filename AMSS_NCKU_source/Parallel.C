@@ -4,6 +4,738 @@
 #include "prolongrestrict.h"
 #include "misc.h"
 #include "parameters.h"
+#include <map>
+
+namespace
+{
+struct SyncPlanCache
+{
+  unsigned long long signature;
+  int cpusize;
+  MyList<Parallel::gridseg> *dst;
+  MyList<Parallel::gridseg> **src;
+  MyList<Parallel::gridseg> **transfer_src;
+  MyList<Parallel::gridseg> **transfer_dst;
+  int *send_units;
+  int *recv_units;
+  int *send_nodes;
+  int *recv_nodes;
+  MyList<Parallel::gridseg> **send_src_by_node;
+  MyList<Parallel::gridseg> **send_dst_by_node;
+  MyList<Parallel::gridseg> **recv_src_by_node;
+  MyList<Parallel::gridseg> **recv_dst_by_node;
+  int send_node_no;
+  int recv_node_no;
+  int local_unit;
+};
+
+struct TransferWorkspace
+{
+  int cpusize;
+  MPI_Request *reqs;
+  MPI_Status *stats;
+  int *send_length;
+  int *recv_length;
+  int *neighbors;
+  double **send_data;
+  double **recv_data;
+  int *send_cap;
+  int *recv_cap;
+};
+
+static std::map<const Patch *, SyncPlanCache *> g_patch_sync_cache;
+static std::map<const MyList<Patch> *, SyncPlanCache *> g_patchlist_sync_cache;
+static TransferWorkspace g_transfer_ws = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+static unsigned long long hash_mix(unsigned long long h, unsigned long long v)
+{
+  h ^= v + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+  return h;
+}
+
+static unsigned long long hash_mix_double(unsigned long long h, double v)
+{
+  union
+  {
+    double d;
+    unsigned long long u;
+  } x;
+  x.d = v;
+  return hash_mix(h, x.u);
+}
+
+static unsigned long long patch_signature(const Patch *Pat)
+{
+  unsigned long long h = 1469598103934665603ULL;
+  if (!Pat)
+    return h;
+
+  h = hash_mix(h, (unsigned long long)Pat->lev);
+  for (int i = 0; i < dim; i++)
+  {
+    h = hash_mix(h, (unsigned long long)Pat->shape[i]);
+    h = hash_mix_double(h, Pat->bbox[i]);
+    h = hash_mix_double(h, Pat->bbox[dim + i]);
+  }
+
+  int block_count = 0;
+  MyList<Block> *BP = Pat->blb;
+  while (BP)
+  {
+    Block *bp = BP->data;
+    if (bp)
+    {
+      h = hash_mix(h, (unsigned long long)bp->rank);
+      h = hash_mix(h, (unsigned long long)bp->lev);
+      for (int i = 0; i < dim; i++)
+      {
+        h = hash_mix(h, (unsigned long long)bp->shape[i]);
+        h = hash_mix_double(h, bp->bbox[i]);
+        h = hash_mix_double(h, bp->bbox[dim + i]);
+      }
+    }
+    block_count++;
+    if (BP == Pat->ble)
+      break;
+    BP = BP->next;
+  }
+  h = hash_mix(h, (unsigned long long)block_count);
+  return h;
+}
+
+static unsigned long long patchlist_signature(const MyList<Patch> *PatL)
+{
+  unsigned long long h = 1099511628211ULL;
+  int patch_count = 0;
+  while (PatL)
+  {
+    h = hash_mix(h, patch_signature(PatL->data));
+    patch_count++;
+    PatL = PatL->next;
+  }
+  h = hash_mix(h, (unsigned long long)patch_count);
+  return h;
+}
+
+static void destroy_sync_plan(SyncPlanCache *plan)
+{
+  if (!plan)
+    return;
+
+  if (plan->dst)
+    plan->dst->destroyList();
+
+  if (plan->src)
+  {
+    for (int node = 0; node < plan->cpusize; node++)
+      if (plan->src[node])
+        plan->src[node]->destroyList();
+  }
+
+  if (plan->transfer_src)
+  {
+    for (int node = 0; node < plan->cpusize; node++)
+      if (plan->transfer_src[node])
+        plan->transfer_src[node]->destroyList();
+  }
+
+  if (plan->transfer_dst)
+  {
+    for (int node = 0; node < plan->cpusize; node++)
+      if (plan->transfer_dst[node])
+        plan->transfer_dst[node]->destroyList();
+  }
+
+  delete[] plan->src;
+  delete[] plan->transfer_src;
+  delete[] plan->transfer_dst;
+  delete[] plan->send_units;
+  delete[] plan->recv_units;
+  delete[] plan->send_nodes;
+  delete[] plan->recv_nodes;
+  if (plan->send_src_by_node)
+  {
+    for (int node = 0; node < plan->cpusize; node++)
+      if (plan->send_src_by_node[node])
+        plan->send_src_by_node[node]->clearList();
+  }
+  if (plan->send_dst_by_node)
+  {
+    for (int node = 0; node < plan->cpusize; node++)
+      if (plan->send_dst_by_node[node])
+        plan->send_dst_by_node[node]->clearList();
+  }
+  if (plan->recv_src_by_node)
+  {
+    for (int node = 0; node < plan->cpusize; node++)
+      if (plan->recv_src_by_node[node])
+        plan->recv_src_by_node[node]->clearList();
+  }
+  if (plan->recv_dst_by_node)
+  {
+    for (int node = 0; node < plan->cpusize; node++)
+      if (plan->recv_dst_by_node[node])
+        plan->recv_dst_by_node[node]->clearList();
+  }
+  delete[] plan->send_src_by_node;
+  delete[] plan->send_dst_by_node;
+  delete[] plan->recv_src_by_node;
+  delete[] plan->recv_dst_by_node;
+
+  plan->dst = 0;
+  plan->src = 0;
+  plan->transfer_src = 0;
+  plan->transfer_dst = 0;
+  plan->send_units = 0;
+  plan->recv_units = 0;
+  plan->send_nodes = 0;
+  plan->recv_nodes = 0;
+  plan->send_src_by_node = 0;
+  plan->send_dst_by_node = 0;
+  plan->recv_src_by_node = 0;
+  plan->recv_dst_by_node = 0;
+  plan->send_node_no = 0;
+  plan->recv_node_no = 0;
+  plan->local_unit = 0;
+  plan->cpusize = 0;
+  plan->signature = 0;
+}
+
+static SyncPlanCache *get_or_create_plan(std::map<const Patch *, SyncPlanCache *> &cache, const Patch *key)
+{
+  std::map<const Patch *, SyncPlanCache *>::iterator it = cache.find(key);
+  if (it != cache.end())
+    return it->second;
+
+  SyncPlanCache *plan = new SyncPlanCache;
+  plan->signature = 0;
+  plan->cpusize = 0;
+  plan->dst = 0;
+  plan->src = 0;
+  plan->transfer_src = 0;
+  plan->transfer_dst = 0;
+  plan->send_units = 0;
+  plan->recv_units = 0;
+  plan->send_nodes = 0;
+  plan->recv_nodes = 0;
+  plan->send_src_by_node = 0;
+  plan->send_dst_by_node = 0;
+  plan->recv_src_by_node = 0;
+  plan->recv_dst_by_node = 0;
+  plan->send_node_no = 0;
+  plan->recv_node_no = 0;
+  plan->local_unit = 0;
+  cache[key] = plan;
+  return plan;
+}
+
+static SyncPlanCache *get_or_create_plan(std::map<const MyList<Patch> *, SyncPlanCache *> &cache, const MyList<Patch> *key)
+{
+  std::map<const MyList<Patch> *, SyncPlanCache *>::iterator it = cache.find(key);
+  if (it != cache.end())
+    return it->second;
+
+  SyncPlanCache *plan = new SyncPlanCache;
+  plan->signature = 0;
+  plan->cpusize = 0;
+  plan->dst = 0;
+  plan->src = 0;
+  plan->transfer_src = 0;
+  plan->transfer_dst = 0;
+  plan->send_units = 0;
+  plan->recv_units = 0;
+  plan->send_nodes = 0;
+  plan->recv_nodes = 0;
+  plan->send_src_by_node = 0;
+  plan->send_dst_by_node = 0;
+  plan->recv_src_by_node = 0;
+  plan->recv_dst_by_node = 0;
+  plan->send_node_no = 0;
+  plan->recv_node_no = 0;
+  plan->local_unit = 0;
+  cache[key] = plan;
+  return plan;
+}
+
+static int count_var_pairs(MyList<var> *VarList1, MyList<var> *VarList2)
+{
+  int count = 0;
+  MyList<var> *varls = VarList1;
+  MyList<var> *varld = VarList2;
+  while (varls && varld)
+  {
+    count++;
+    varls = varls->next;
+    varld = varld->next;
+  }
+  if (varls || varld)
+  {
+    cout << "error in transfer, var lists does not match." << endl;
+    MPI_Abort(MPI_COMM_WORLD, 1);
+  }
+  return count;
+}
+
+static inline int gs_volume(const Parallel::gridseg *g)
+{
+  return g->shape[0] * g->shape[1] * g->shape[2];
+}
+
+static inline void append_alias_node(MyList<Parallel::gridseg> *&head, MyList<Parallel::gridseg> *&tail, Parallel::gridseg *g)
+{
+  if (!head)
+  {
+    head = tail = new MyList<Parallel::gridseg>;
+    head->data = g;
+    head->next = 0;
+  }
+  else
+  {
+    tail->next = new MyList<Parallel::gridseg>;
+    tail = tail->next;
+    tail->data = g;
+    tail->next = 0;
+  }
+}
+
+static void build_sync_node_plan(SyncPlanCache *plan)
+{
+  int myrank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+
+  plan->send_units = new int[plan->cpusize];
+  plan->recv_units = new int[plan->cpusize];
+  plan->send_nodes = new int[plan->cpusize];
+  plan->recv_nodes = new int[plan->cpusize];
+  plan->send_src_by_node = new MyList<Parallel::gridseg> *[plan->cpusize];
+  plan->send_dst_by_node = new MyList<Parallel::gridseg> *[plan->cpusize];
+  plan->recv_src_by_node = new MyList<Parallel::gridseg> *[plan->cpusize];
+  plan->recv_dst_by_node = new MyList<Parallel::gridseg> *[plan->cpusize];
+  MyList<Parallel::gridseg> **send_src_tail = new MyList<Parallel::gridseg> *[plan->cpusize];
+  MyList<Parallel::gridseg> **send_dst_tail = new MyList<Parallel::gridseg> *[plan->cpusize];
+  MyList<Parallel::gridseg> **recv_src_tail = new MyList<Parallel::gridseg> *[plan->cpusize];
+  MyList<Parallel::gridseg> **recv_dst_tail = new MyList<Parallel::gridseg> *[plan->cpusize];
+
+  for (int node = 0; node < plan->cpusize; node++)
+  {
+    plan->send_units[node] = plan->recv_units[node] = 0;
+    plan->send_src_by_node[node] = plan->send_dst_by_node[node] = 0;
+    plan->recv_src_by_node[node] = plan->recv_dst_by_node[node] = 0;
+    send_src_tail[node] = send_dst_tail[node] = 0;
+    recv_src_tail[node] = recv_dst_tail[node] = 0;
+  }
+
+  // outbound message units from this rank to each target rank
+  MyList<Parallel::gridseg> *s = plan->transfer_src[myrank], *d = plan->transfer_dst[myrank];
+  while (s && d)
+  {
+    if (s->data->Bg->rank == myrank)
+    {
+      const int node = d->data->Bg->rank;
+      if (0 <= node && node < plan->cpusize)
+      {
+        append_alias_node(plan->send_src_by_node[node], send_src_tail[node], s->data);
+        append_alias_node(plan->send_dst_by_node[node], send_dst_tail[node], d->data);
+        plan->send_units[node] += gs_volume(d->data);
+      }
+    }
+    s = s->next;
+    d = d->next;
+  }
+
+  // inbound message units from each source rank to this rank
+  for (int node = 0; node < plan->cpusize; node++)
+  {
+    if (node == myrank)
+      continue;
+    s = plan->transfer_src[node];
+    d = plan->transfer_dst[node];
+    while (s && d)
+    {
+      if (s->data->Bg->rank == node && d->data->Bg->rank == myrank)
+      {
+        append_alias_node(plan->recv_src_by_node[node], recv_src_tail[node], s->data);
+        append_alias_node(plan->recv_dst_by_node[node], recv_dst_tail[node], d->data);
+        plan->recv_units[node] += gs_volume(d->data);
+      }
+      s = s->next;
+      d = d->next;
+    }
+  }
+
+  plan->local_unit = plan->send_units[myrank];
+  plan->send_node_no = 0;
+  plan->recv_node_no = 0;
+  for (int node = 0; node < plan->cpusize; node++)
+  {
+    if (node != myrank && plan->send_units[node] > 0)
+      plan->send_nodes[plan->send_node_no++] = node;
+    if (node != myrank && plan->recv_units[node] > 0)
+      plan->recv_nodes[plan->recv_node_no++] = node;
+  }
+
+  delete[] send_src_tail;
+  delete[] send_dst_tail;
+  delete[] recv_src_tail;
+  delete[] recv_dst_tail;
+}
+
+static void build_patch_sync_plan(SyncPlanCache *plan, Patch *Pat, int cpusize)
+{
+  destroy_sync_plan(plan);
+  plan->cpusize = cpusize;
+  plan->src = new MyList<Parallel::gridseg> *[cpusize];
+  plan->transfer_src = new MyList<Parallel::gridseg> *[cpusize];
+  plan->transfer_dst = new MyList<Parallel::gridseg> *[cpusize];
+  for (int node = 0; node < cpusize; node++)
+    plan->src[node] = plan->transfer_src[node] = plan->transfer_dst[node] = 0;
+
+  plan->dst = Parallel::build_ghost_gsl(Pat);
+  for (int node = 0; node < cpusize; node++)
+  {
+    plan->src[node] = Parallel::build_owned_gsl0(Pat, node);
+    Parallel::build_gstl(plan->src[node], plan->dst, &plan->transfer_src[node], &plan->transfer_dst[node]);
+  }
+  build_sync_node_plan(plan);
+}
+
+static void build_patchlist_sync_plan(SyncPlanCache *plan, MyList<Patch> *PatL, int cpusize, int Symmetry)
+{
+  destroy_sync_plan(plan);
+  plan->cpusize = cpusize;
+  plan->src = new MyList<Parallel::gridseg> *[cpusize];
+  plan->transfer_src = new MyList<Parallel::gridseg> *[cpusize];
+  plan->transfer_dst = new MyList<Parallel::gridseg> *[cpusize];
+  for (int node = 0; node < cpusize; node++)
+    plan->src[node] = plan->transfer_src[node] = plan->transfer_dst[node] = 0;
+
+  plan->dst = Parallel::build_buffer_gsl(PatL);
+  for (int node = 0; node < cpusize; node++)
+  {
+    plan->src[node] = Parallel::build_owned_gsl(PatL, node, 5, Symmetry);
+    Parallel::build_gstl(plan->src[node], plan->dst, &plan->transfer_src[node], &plan->transfer_dst[node]);
+  }
+  build_sync_node_plan(plan);
+}
+
+static void release_transfer_workspace()
+{
+  if (g_transfer_ws.send_data)
+  {
+    for (int node = 0; node < g_transfer_ws.cpusize; node++)
+      delete[] g_transfer_ws.send_data[node];
+  }
+  if (g_transfer_ws.recv_data)
+  {
+    for (int node = 0; node < g_transfer_ws.cpusize; node++)
+      delete[] g_transfer_ws.recv_data[node];
+  }
+
+  delete[] g_transfer_ws.reqs;
+  delete[] g_transfer_ws.stats;
+  delete[] g_transfer_ws.send_length;
+  delete[] g_transfer_ws.recv_length;
+  delete[] g_transfer_ws.neighbors;
+  delete[] g_transfer_ws.send_data;
+  delete[] g_transfer_ws.recv_data;
+  delete[] g_transfer_ws.send_cap;
+  delete[] g_transfer_ws.recv_cap;
+
+  g_transfer_ws.cpusize = 0;
+  g_transfer_ws.reqs = 0;
+  g_transfer_ws.stats = 0;
+  g_transfer_ws.send_length = 0;
+  g_transfer_ws.recv_length = 0;
+  g_transfer_ws.neighbors = 0;
+  g_transfer_ws.send_data = 0;
+  g_transfer_ws.recv_data = 0;
+  g_transfer_ws.send_cap = 0;
+  g_transfer_ws.recv_cap = 0;
+}
+
+static void ensure_transfer_workspace(int cpusize)
+{
+  if (g_transfer_ws.cpusize == cpusize && g_transfer_ws.reqs)
+    return;
+
+  release_transfer_workspace();
+
+  g_transfer_ws.cpusize = cpusize;
+  g_transfer_ws.reqs = new MPI_Request[2 * cpusize];
+  g_transfer_ws.stats = new MPI_Status[2 * cpusize];
+  g_transfer_ws.send_length = new int[cpusize];
+  g_transfer_ws.recv_length = new int[cpusize];
+  g_transfer_ws.neighbors = new int[cpusize];
+  g_transfer_ws.send_data = new double *[cpusize];
+  g_transfer_ws.recv_data = new double *[cpusize];
+  g_transfer_ws.send_cap = new int[cpusize];
+  g_transfer_ws.recv_cap = new int[cpusize];
+
+  for (int node = 0; node < cpusize; node++)
+  {
+    g_transfer_ws.send_data[node] = 0;
+    g_transfer_ws.recv_data[node] = 0;
+    g_transfer_ws.send_cap[node] = 0;
+    g_transfer_ws.recv_cap[node] = 0;
+  }
+}
+
+static double *ensure_buffer(double *buf, int &cap, int len)
+{
+  if (len <= 0)
+    return buf;
+  if (cap >= len && buf)
+    return buf;
+  delete[] buf;
+  buf = new double[len];
+  cap = len;
+  return buf;
+}
+
+static void transfer_sync_plan(SyncPlanCache *plan, MyList<var> *VarList1, MyList<var> *VarList2, int Symmetry)
+{
+  int myrank, cpusize;
+  MPI_Comm_size(MPI_COMM_WORLD, &cpusize);
+  MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+
+  if (!plan || plan->cpusize != cpusize)
+  {
+    cout << "Parallel::Sync cache plan is invalid." << endl;
+    MPI_Abort(MPI_COMM_WORLD, 1);
+  }
+
+  const int var_count = count_var_pairs(VarList1, VarList2);
+  ensure_transfer_workspace(cpusize);
+
+  int recv_req_total = 0;
+  int send_req_total = 0;
+  int *recv_req_node = (plan->recv_node_no > 0) ? new int[plan->recv_node_no] : 0;
+  for (int i = 0; i < plan->recv_node_no; i++)
+  {
+    const int node = plan->recv_nodes[i];
+    const int length = plan->recv_units[node] * var_count;
+    if (length > 0)
+    {
+      g_transfer_ws.recv_data[node] = ensure_buffer(g_transfer_ws.recv_data[node], g_transfer_ws.recv_cap[node], length);
+      if (!g_transfer_ws.recv_data[node])
+      {
+        cout << "out of memory when new in Sync receive buffer" << endl;
+        MPI_Abort(MPI_COMM_WORLD, 1);
+      }
+      MPI_Irecv((void *)g_transfer_ws.recv_data[node], length, MPI_DOUBLE, node, 1, MPI_COMM_WORLD, g_transfer_ws.reqs + recv_req_total);
+      recv_req_node[recv_req_total] = node;
+      recv_req_total++;
+    }
+  }
+
+  for (int i = 0; i < plan->send_node_no; i++)
+  {
+    const int node = plan->send_nodes[i];
+    const int length = plan->send_units[node] * var_count;
+    if (length > 0)
+    {
+      g_transfer_ws.send_data[node] = ensure_buffer(g_transfer_ws.send_data[node], g_transfer_ws.send_cap[node], length);
+      if (!g_transfer_ws.send_data[node])
+      {
+        cout << "out of memory when new in Sync send buffer" << endl;
+        MPI_Abort(MPI_COMM_WORLD, 1);
+      }
+      Parallel::data_packer(g_transfer_ws.send_data[node], plan->send_src_by_node[node], plan->send_dst_by_node[node], node, PACK, VarList1, VarList2, Symmetry);
+      MPI_Isend((void *)g_transfer_ws.send_data[node], length, MPI_DOUBLE, node, 1, MPI_COMM_WORLD,
+                g_transfer_ws.reqs + recv_req_total + send_req_total);
+      send_req_total++;
+    }
+  }
+
+  if (plan->local_unit > 0)
+  {
+    const int length = plan->local_unit * var_count;
+    g_transfer_ws.recv_data[myrank] = ensure_buffer(g_transfer_ws.recv_data[myrank], g_transfer_ws.recv_cap[myrank], length);
+    if (!g_transfer_ws.recv_data[myrank])
+    {
+      cout << "out of memory when new in Sync local buffer" << endl;
+      MPI_Abort(MPI_COMM_WORLD, 1);
+    }
+    Parallel::data_packer(g_transfer_ws.recv_data[myrank], plan->send_src_by_node[myrank], plan->send_dst_by_node[myrank], myrank, PACK, VarList1, VarList2, Symmetry);
+    Parallel::data_packer(g_transfer_ws.recv_data[myrank], plan->send_src_by_node[myrank], plan->send_dst_by_node[myrank], myrank, UNPACK, VarList1, VarList2, Symmetry);
+  }
+
+  if (recv_req_total > 0)
+  {
+    int *idx_done = new int[recv_req_total];
+    int recv_done = 0;
+    while (recv_done < recv_req_total)
+    {
+      int done_now = 0;
+      MPI_Waitsome(recv_req_total, g_transfer_ws.reqs, &done_now, idx_done, g_transfer_ws.stats);
+      if (done_now == MPI_UNDEFINED)
+        break;
+      recv_done += done_now;
+      for (int j = 0; j < done_now; j++)
+      {
+        const int node = recv_req_node[idx_done[j]];
+        Parallel::data_packer(g_transfer_ws.recv_data[node], plan->recv_src_by_node[node], plan->recv_dst_by_node[node], node, UNPACK, VarList1, VarList2, Symmetry);
+      }
+    }
+    delete[] idx_done;
+  }
+
+  if (send_req_total > 0)
+    MPI_Waitall(send_req_total, g_transfer_ws.reqs + recv_req_total, g_transfer_ws.stats + recv_req_total);
+
+  delete[] recv_req_node;
+}
+
+static void transfer_sync_plan_batch(SyncPlanCache **plans, int plan_no, MyList<var> *VarList1, MyList<var> *VarList2, int Symmetry)
+{
+  if (!plans || plan_no <= 0)
+    return;
+
+  int myrank, cpusize;
+  MPI_Comm_size(MPI_COMM_WORLD, &cpusize);
+  MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+
+  const int var_count = count_var_pairs(VarList1, VarList2);
+  ensure_transfer_workspace(cpusize);
+
+  int total_local = 0;
+  for (int node = 0; node < cpusize; node++)
+    g_transfer_ws.send_length[node] = g_transfer_ws.recv_length[node] = 0;
+
+  for (int p = 0; p < plan_no; p++)
+  {
+    SyncPlanCache *plan = plans[p];
+    if (!plan || plan->cpusize != cpusize)
+    {
+      cout << "Parallel::Sync cache plan batch is invalid." << endl;
+      MPI_Abort(MPI_COMM_WORLD, 1);
+    }
+
+    total_local += plan->local_unit * var_count;
+    for (int i = 0; i < plan->send_node_no; i++)
+    {
+      const int node = plan->send_nodes[i];
+      g_transfer_ws.send_length[node] += plan->send_units[node] * var_count;
+    }
+    for (int i = 0; i < plan->recv_node_no; i++)
+    {
+      const int node = plan->recv_nodes[i];
+      g_transfer_ws.recv_length[node] += plan->recv_units[node] * var_count;
+    }
+  }
+
+  int neighbor_no = 0;
+  for (int node = 0; node < cpusize; node++)
+    if (node != myrank && (g_transfer_ws.send_length[node] > 0 || g_transfer_ws.recv_length[node] > 0))
+      g_transfer_ws.neighbors[neighbor_no++] = node;
+
+  int recv_req_total = 0;
+  int send_req_total = 0;
+  int *recv_req_node = (neighbor_no > 0) ? new int[neighbor_no] : 0;
+  for (int i = 0; i < neighbor_no; i++)
+  {
+    const int node = g_transfer_ws.neighbors[i];
+    if (g_transfer_ws.recv_length[node] > 0)
+    {
+      g_transfer_ws.recv_data[node] = ensure_buffer(g_transfer_ws.recv_data[node], g_transfer_ws.recv_cap[node], g_transfer_ws.recv_length[node]);
+      if (!g_transfer_ws.recv_data[node])
+      {
+        cout << "out of memory when new in Sync batch receive buffer" << endl;
+        MPI_Abort(MPI_COMM_WORLD, 1);
+      }
+      MPI_Irecv((void *)g_transfer_ws.recv_data[node], g_transfer_ws.recv_length[node], MPI_DOUBLE, node, 1, MPI_COMM_WORLD,
+                g_transfer_ws.reqs + recv_req_total);
+      recv_req_node[recv_req_total] = node;
+      recv_req_total++;
+    }
+  }
+
+  for (int i = 0; i < neighbor_no; i++)
+  {
+    const int node = g_transfer_ws.neighbors[i];
+    if (g_transfer_ws.send_length[node] > 0)
+    {
+      g_transfer_ws.send_data[node] = ensure_buffer(g_transfer_ws.send_data[node], g_transfer_ws.send_cap[node], g_transfer_ws.send_length[node]);
+      if (!g_transfer_ws.send_data[node])
+      {
+        cout << "out of memory when new in Sync batch send buffer" << endl;
+        MPI_Abort(MPI_COMM_WORLD, 1);
+      }
+      int offset = 0;
+      for (int p = 0; p < plan_no; p++)
+      {
+        SyncPlanCache *plan = plans[p];
+        const int len = plan->send_units[node] * var_count;
+        if (len > 0)
+        {
+          Parallel::data_packer(g_transfer_ws.send_data[node] + offset, plan->send_src_by_node[node], plan->send_dst_by_node[node], node, PACK, VarList1, VarList2, Symmetry);
+          offset += len;
+        }
+      }
+      MPI_Isend((void *)g_transfer_ws.send_data[node], g_transfer_ws.send_length[node], MPI_DOUBLE, node, 1, MPI_COMM_WORLD,
+                g_transfer_ws.reqs + recv_req_total + send_req_total);
+      send_req_total++;
+    }
+  }
+
+  if (total_local > 0)
+  {
+    g_transfer_ws.recv_data[myrank] = ensure_buffer(g_transfer_ws.recv_data[myrank], g_transfer_ws.recv_cap[myrank], total_local);
+    if (!g_transfer_ws.recv_data[myrank])
+    {
+      cout << "out of memory when new in Sync batch local buffer" << endl;
+      MPI_Abort(MPI_COMM_WORLD, 1);
+    }
+    int offset = 0;
+    for (int p = 0; p < plan_no; p++)
+    {
+      SyncPlanCache *plan = plans[p];
+      const int len = plan->local_unit * var_count;
+      if (len > 0)
+      {
+        Parallel::data_packer(g_transfer_ws.recv_data[myrank] + offset, plan->send_src_by_node[myrank], plan->send_dst_by_node[myrank], myrank, PACK, VarList1, VarList2, Symmetry);
+        Parallel::data_packer(g_transfer_ws.recv_data[myrank] + offset, plan->send_src_by_node[myrank], plan->send_dst_by_node[myrank], myrank, UNPACK, VarList1, VarList2, Symmetry);
+        offset += len;
+      }
+    }
+  }
+
+  if (recv_req_total > 0)
+  {
+    int *idx_done = new int[recv_req_total];
+    int recv_done = 0;
+    while (recv_done < recv_req_total)
+    {
+      int done_now = 0;
+      MPI_Waitsome(recv_req_total, g_transfer_ws.reqs, &done_now, idx_done, g_transfer_ws.stats);
+      if (done_now == MPI_UNDEFINED)
+        break;
+      recv_done += done_now;
+      for (int j = 0; j < done_now; j++)
+      {
+        const int node = recv_req_node[idx_done[j]];
+        int offset = 0;
+        for (int p = 0; p < plan_no; p++)
+        {
+          SyncPlanCache *plan = plans[p];
+          const int len = plan->recv_units[node] * var_count;
+          if (len > 0)
+          {
+            Parallel::data_packer(g_transfer_ws.recv_data[node] + offset, plan->recv_src_by_node[node], plan->recv_dst_by_node[node], node, UNPACK, VarList1, VarList2, Symmetry);
+            offset += len;
+          }
+        }
+      }
+    }
+    delete[] idx_done;
+  }
+
+  if (send_req_total > 0)
+    MPI_Waitall(send_req_total, g_transfer_ws.reqs + recv_req_total, g_transfer_ws.stats + recv_req_total);
+
+  delete[] recv_req_node;
+}
+} // namespace
 
 int Parallel::partition1(int &nx, int split_size, int min_width, int cpusize, int shape) // special for 1 diemnsion
 {
@@ -59,7 +791,7 @@ int Parallel::partition2(int *nxy, int split_size, int *min_width, int cpusize, 
 int Parallel::partition3(int *nxyz, int split_size, int *min_width, int cpusize, int *shape) // special for 3 diemnsions
 #if 1                                                                                        // algrithsm from Pretorius
 {
-//	cout<<split_size<<endl<<min_width[0]<<endl<<min_width[1]<<endl<<min_width[2]<<endl
+//    cout<<split_size<<endl<<min_width[0]<<endl<<min_width[1]<<endl<<min_width[2]<<endl
 //            <<shape[0]<<endl<<shape[1]<<endl<<shape[2]<<endl<<cpusize<<endl;
 #define SEARCH_SIZE 5
   int i, j, k, nx, ny, nz;
@@ -445,9 +1177,9 @@ MyList<Block> *Parallel::distribute(MyList<Patch> *PatchLIST, int cpusize, int i
             misc::dividBlock(dim, shape_here, bbox_here, pices, picef, shape_res, bbox_res, min_width);
             ng = ng0 = new Block(dim, shape_res, bbox_res, n_rank++, ingfsi, fngfsi, PP->lev, 0); // delete through KillBlocks
 
-            //	       if(n_rank==cpusize) {n_rank=0; cerr<<"place one!!"<<endl;}
+            //           if(n_rank==cpusize) {n_rank=0; cerr<<"place one!!"<<endl;}
 
-            //	       ng->checkBlock();
+            //           ng->checkBlock();
             if (BlL)
               BlL->insert(ng);
             else
@@ -456,14 +1188,14 @@ MyList<Block> *Parallel::distribute(MyList<Patch> *PatchLIST, int cpusize, int i
             for (int i = 1; i < pices; i++)
             {
               ng = new Block(dim, shape_res + i * dim, bbox_res + i * 2 * dim, n_rank++, ingfsi, fngfsi, PP->lev, i); // delete through KillBlocks
-              //	        if(n_rank==cpusize) {n_rank=0; cerr<<"place two!! "<<i<<endl;}
-              //	        ng->checkBlock();
+              //            if(n_rank==cpusize) {n_rank=0; cerr<<"place two!! "<<i<<endl;}
+              //            ng->checkBlock();
               BlL->insert(ng);
             }
           }
 #else
           ng = ng0 = new Block(dim, shape_here, bbox_here, n_rank++, ingfsi, fngfsi, PP->lev); // delete through KillBlocks
-          //	    ng->checkBlock();
+          //        ng->checkBlock();
           if (BlL)
             BlL->insert(ng);
           else
@@ -772,7 +1504,7 @@ MyList<Block> *Parallel::distribute(MyList<Patch> *PatchLIST, int cpusize, int i
             double bbox_res[2 * dim * pices];
             misc::dividBlock(dim, shape_here, bbox_here, pices, picef, shape_res, bbox_res, min_width);
             ng = ng0 = new Block(dim, shape_res, bbox_res, n_rank++, ingfsi, fngfsi, PP->lev, 0); // delete through KillBlocks
-            //	       ng->checkBlock();
+            //           ng->checkBlock();
             if (BlL)
               BlL->insert(ng);
             else
@@ -781,13 +1513,13 @@ MyList<Block> *Parallel::distribute(MyList<Patch> *PatchLIST, int cpusize, int i
             for (int i = 1; i < pices; i++)
             {
               ng = new Block(dim, shape_res + i * dim, bbox_res + i * 2 * dim, n_rank++, ingfsi, fngfsi, PP->lev, i); // delete through KillBlocks
-              //	        ng->checkBlock();
+              //            ng->checkBlock();
               BlL->insert(ng);
             }
           }
 #else
           ng = ng0 = new Block(dim, shape_here, bbox_here, n_rank++, ingfsi, fngfsi, PP->lev); // delete through KillBlocks
-          //	    ng->checkBlock();
+          //        ng->checkBlock();
           if (BlL)
             BlL->insert(ng);
           else
@@ -3221,10 +3953,10 @@ void Parallel::build_gstl(MyList<Parallel::gridseg> *srci, MyList<Parallel::grid
 #endif
         // ---*---
         // x-------x
-        //		if     (int(2*(sd->uub[i]-uub[i])/SH+0.4)%2 == 1) ub = uub[i]-SH/2;
-        //		else if(int(2*(dd->uub[i]-uub[i])/DH+0.4)%2 == 1) ub = uub[i]-DH/2;
-        //		if     (int(2*(llb[i]-sd->llb[i])/SH+0.4)%2 == 1) lb = llb[i]+SH/2;
-        //		else if(int(2*(llb[i]-dd->llb[i])/DH+0.4)%2 == 1) lb = llb[i]+DH/2;
+        //        if     (int(2*(sd->uub[i]-uub[i])/SH+0.4)%2 == 1) ub = uub[i]-SH/2;
+        //        else if(int(2*(dd->uub[i]-uub[i])/DH+0.4)%2 == 1) ub = uub[i]-DH/2;
+        //        if     (int(2*(llb[i]-sd->llb[i])/SH+0.4)%2 == 1) lb = llb[i]+SH/2;
+        //        else if(int(2*(llb[i]-dd->llb[i])/DH+0.4)%2 == 1) lb = llb[i]+DH/2;
         if (lb > ub + Mymin(SH, DH) / 2)
         {
           flag = false;
@@ -3234,12 +3966,12 @@ void Parallel::build_gstl(MyList<Parallel::gridseg> *srci, MyList<Parallel::grid
 #ifdef Cell
         // |------|
         // |-------------|
-        //		if     (int(2*(sd->uub[i]-uub[i])/SH+0.4)%2 == 1) ub = uub[i]+SH/2;
-        //		else if(int(2*(dd->uub[i]-uub[i])/DH+0.4)%2 == 1) ub = uub[i]+DH/2;
+        //        if     (int(2*(sd->uub[i]-uub[i])/SH+0.4)%2 == 1) ub = uub[i]+SH/2;
+        //        else if(int(2*(dd->uub[i]-uub[i])/DH+0.4)%2 == 1) ub = uub[i]+DH/2;
         //        |------|
         // |-------------|
-        //		if     (int(2*(llb[i]-sd->llb[i])/SH+0.4)%2 == 1) lb = llb[i]-SH/2;
-        //		else if(int(2*(llb[i]-dd->llb[i])/DH+0.4)%2 == 1) lb = llb[i]-DH/2;
+        //        if     (int(2*(llb[i]-sd->llb[i])/SH+0.4)%2 == 1) lb = llb[i]-SH/2;
+        //        else if(int(2*(llb[i]-dd->llb[i])/DH+0.4)%2 == 1) lb = llb[i]-DH/2;
         if (ub - lb < Mymin(SH, DH) / 2)
         {
           flag = false;
@@ -3283,10 +4015,10 @@ void Parallel::build_gstl(MyList<Parallel::gridseg> *srci, MyList<Parallel::grid
 #error Both Cell and Vertex are defined
 #endif
           // old code distuinguish vertex and cell
-          //		   if     (int(2*(sd->uub[i]-uub[i])/SH+0.4)%2 == 1) s2->data->uub[i] = uub[i]-SH/2;
-          //		   else if(int(2*(dd->uub[i]-uub[i])/DH+0.4)%2 == 1) d2->data->uub[i] = uub[i]-DH/2;
-          //	           if     (int(2*(llb[i]-sd->llb[i])/SH+0.4)%2 == 1) s2->data->llb[i] = llb[i]+SH/2;
-          //		   else if(int(2*(llb[i]-dd->llb[i])/DH+0.4)%2 == 1) d2->data->llb[i] = llb[i]+DH/2;
+          //           if     (int(2*(sd->uub[i]-uub[i])/SH+0.4)%2 == 1) s2->data->uub[i] = uub[i]-SH/2;
+          //           else if(int(2*(dd->uub[i]-uub[i])/DH+0.4)%2 == 1) d2->data->uub[i] = uub[i]-DH/2;
+          //               if     (int(2*(llb[i]-sd->llb[i])/SH+0.4)%2 == 1) s2->data->llb[i] = llb[i]+SH/2;
+          //           else if(int(2*(llb[i]-dd->llb[i])/DH+0.4)%2 == 1) d2->data->llb[i] = llb[i]+DH/2;
           // new code: here we concern much more about missing point, because overlaping domain has been gaureented above
           if (int(2 * (sd->uub[i] - uub[i]) / SH + 0.4) % 2 == 1)
             s2->data->uub[i] = uub[i] + SH / 2;
@@ -3513,81 +4245,89 @@ void Parallel::transfer(MyList<Parallel::gridseg> **src, MyList<Parallel::gridse
   MPI_Comm_size(MPI_COMM_WORLD, &cpusize);
   MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
-  int node;
+  ensure_transfer_workspace(cpusize);
 
-  MPI_Request *reqs;
-  MPI_Status *stats;
-  reqs = new MPI_Request[2 * cpusize];
-  stats = new MPI_Status[2 * cpusize];
-  int req_no = 0;
-
-  double **send_data, **rec_data;
-  send_data = new double *[cpusize];
-  rec_data = new double *[cpusize];
-  int length;
-
-  for (node = 0; node < cpusize; node++)
+  int neighbor_no = 0;
+  for (int node = 0; node < cpusize; node++)
   {
-    send_data[node] = rec_data[node] = 0;
+    g_transfer_ws.send_length[node] = 0;
+    g_transfer_ws.recv_length[node] = 0;
+  }
+
+  // local rank handled separately to avoid no-op MPI traffic
+  g_transfer_ws.send_length[myrank] = data_packer(0, src[myrank], dst[myrank], myrank, PACK, VarList1, VarList2, Symmetry);
+  if (g_transfer_ws.send_length[myrank] > 0)
+    g_transfer_ws.neighbors[neighbor_no++] = myrank;
+
+  for (int node = 0; node < cpusize; node++)
+  {
     if (node == myrank)
-    {
-      if (length = data_packer(0, src[myrank], dst[myrank], node, PACK, VarList1, VarList2, Symmetry))
-      {
-        rec_data[node] = new double[length];
-        if (!rec_data[node])
-        {
-          cout << "out of memory when new in short transfer, place 1" << endl;
-          MPI_Abort(MPI_COMM_WORLD, 1);
-        }
-        data_packer(rec_data[node], src[myrank], dst[myrank], node, PACK, VarList1, VarList2, Symmetry);
-      }
-    }
-    else
-    {
-      // send from this cpu to cpu#node
-      if (length = data_packer(0, src[myrank], dst[myrank], node, PACK, VarList1, VarList2, Symmetry))
-      {
-        send_data[node] = new double[length];
-        if (!send_data[node])
-        {
-          cout << "out of memory when new in short transfer, place 2" << endl;
-          MPI_Abort(MPI_COMM_WORLD, 1);
-        }
-        data_packer(send_data[node], src[myrank], dst[myrank], node, PACK, VarList1, VarList2, Symmetry);
-        MPI_Isend((void *)send_data[node], length, MPI_DOUBLE, node, 1, MPI_COMM_WORLD, reqs + req_no++);
-      }
-      // receive from cpu#node to this cpu
-      if (length = data_packer(0, src[node], dst[node], node, UNPACK, VarList1, VarList2, Symmetry))
-      {
-        rec_data[node] = new double[length];
-        if (!rec_data[node])
-        {
-          cout << "out of memory when new in short transfer, place 3" << endl;
-          MPI_Abort(MPI_COMM_WORLD, 1);
-        }
-        MPI_Irecv((void *)rec_data[node], length, MPI_DOUBLE, node, 1, MPI_COMM_WORLD, reqs + req_no++);
-      }
-    }
+      continue;
+
+    g_transfer_ws.send_length[node] = data_packer(0, src[myrank], dst[myrank], node, PACK, VarList1, VarList2, Symmetry);
+    g_transfer_ws.recv_length[node] = data_packer(0, src[node], dst[node], node, UNPACK, VarList1, VarList2, Symmetry);
+
+    if (g_transfer_ws.send_length[node] > 0 || g_transfer_ws.recv_length[node] > 0)
+      g_transfer_ws.neighbors[neighbor_no++] = node;
   }
-  // wait for all requests to complete
-  MPI_Waitall(req_no, reqs, stats);
 
-  for (node = 0; node < cpusize; node++)
-    if (rec_data[node])
-      data_packer(rec_data[node], src[node], dst[node], node, UNPACK, VarList1, VarList2, Symmetry);
-
-  for (node = 0; node < cpusize; node++)
+  int req_no = 0;
+  for (int i = 0; i < neighbor_no; i++)
   {
-    if (send_data[node])
-      delete[] send_data[node];
-    if (rec_data[node])
-      delete[] rec_data[node];
+    int node = g_transfer_ws.neighbors[i];
+    if (node == myrank)
+      continue;
+
+    if (g_transfer_ws.send_length[node] > 0)
+    {
+      g_transfer_ws.send_data[node] = ensure_buffer(g_transfer_ws.send_data[node], g_transfer_ws.send_cap[node], g_transfer_ws.send_length[node]);
+      if (!g_transfer_ws.send_data[node])
+      {
+        cout << "out of memory when new in short transfer, send buffer" << endl;
+        MPI_Abort(MPI_COMM_WORLD, 1);
+      }
+      data_packer(g_transfer_ws.send_data[node], src[myrank], dst[myrank], node, PACK, VarList1, VarList2, Symmetry);
+      MPI_Isend((void *)g_transfer_ws.send_data[node], g_transfer_ws.send_length[node], MPI_DOUBLE, node, 1, MPI_COMM_WORLD,
+                g_transfer_ws.reqs + req_no++);
+    }
+
+    if (g_transfer_ws.recv_length[node] > 0)
+    {
+      g_transfer_ws.recv_data[node] = ensure_buffer(g_transfer_ws.recv_data[node], g_transfer_ws.recv_cap[node], g_transfer_ws.recv_length[node]);
+      if (!g_transfer_ws.recv_data[node])
+      {
+        cout << "out of memory when new in short transfer, receive buffer" << endl;
+        MPI_Abort(MPI_COMM_WORLD, 1);
+      }
+      MPI_Irecv((void *)g_transfer_ws.recv_data[node], g_transfer_ws.recv_length[node], MPI_DOUBLE, node, 1, MPI_COMM_WORLD,
+                g_transfer_ws.reqs + req_no++);
+    }
   }
 
-  delete[] reqs;
-  delete[] stats;
-  delete[] send_data;
-  delete[] rec_data;
+  // local copy path
+  if (g_transfer_ws.send_length[myrank] > 0)
+  {
+    g_transfer_ws.recv_data[myrank] = ensure_buffer(g_transfer_ws.recv_data[myrank], g_transfer_ws.recv_cap[myrank], g_transfer_ws.send_length[myrank]);
+    if (!g_transfer_ws.recv_data[myrank])
+    {
+      cout << "out of memory when new in short transfer, local buffer" << endl;
+      MPI_Abort(MPI_COMM_WORLD, 1);
+    }
+    data_packer(g_transfer_ws.recv_data[myrank], src[myrank], dst[myrank], myrank, PACK, VarList1, VarList2, Symmetry);
+    data_packer(g_transfer_ws.recv_data[myrank], src[myrank], dst[myrank], myrank, UNPACK, VarList1, VarList2, Symmetry);
+  }
+
+  if (req_no > 0)
+    MPI_Waitall(req_no, g_transfer_ws.reqs, g_transfer_ws.stats);
+
+  for (int i = 0; i < neighbor_no; i++)
+  {
+    int node = g_transfer_ws.neighbors[i];
+    if (node == myrank)
+      continue;
+    if (g_transfer_ws.recv_length[node] > 0)
+      data_packer(g_transfer_ws.recv_data[node], src[node], dst[node], node, UNPACK, VarList1, VarList2, Symmetry);
+  }
 }
 //
 void Parallel::transfermix(MyList<Parallel::gridseg> **src, MyList<Parallel::gridseg> **dst,
@@ -3679,82 +4419,65 @@ void Parallel::Sync(Patch *Pat, MyList<var> *VarList, int Symmetry)
   int cpusize;
   MPI_Comm_size(MPI_COMM_WORLD, &cpusize);
 
-  MyList<Parallel::gridseg> *dst;
-  MyList<Parallel::gridseg> **src, **transfer_src, **transfer_dst;
-  src = new MyList<Parallel::gridseg> *[cpusize];
-  transfer_src = new MyList<Parallel::gridseg> *[cpusize];
-  transfer_dst = new MyList<Parallel::gridseg> *[cpusize];
-
-  dst = build_ghost_gsl(Pat); // ghost region only
-  for (int node = 0; node < cpusize; node++)
+  const unsigned long long sig = patch_signature(Pat);
+  SyncPlanCache *plan = get_or_create_plan(g_patch_sync_cache, Pat);
+  if (plan->signature != sig || plan->cpusize != cpusize || !plan->transfer_src || !plan->transfer_dst)
   {
-    src[node] = build_owned_gsl0(Pat, node);                              // for the part without ghost points and do not extend
-    build_gstl(src[node], dst, &transfer_src[node], &transfer_dst[node]); // for transfer_src[node], data locate on cpu#node;
-                                                                          // but for transfer_dst[node] the data may locate on any node
+    build_patch_sync_plan(plan, Pat, cpusize);
+    plan->signature = sig;
   }
 
-  transfer(transfer_src, transfer_dst, VarList, VarList, Symmetry);
-
-  if (dst)
-    dst->destroyList();
-  for (int node = 0; node < cpusize; node++)
-  {
-    if (src[node])
-      src[node]->destroyList();
-    if (transfer_src[node])
-      transfer_src[node]->destroyList();
-    if (transfer_dst[node])
-      transfer_dst[node]->destroyList();
-  }
-
-  delete[] src;
-  delete[] transfer_src;
-  delete[] transfer_dst;
+  transfer_sync_plan(plan, VarList, VarList, Symmetry);
 }
 void Parallel::Sync(MyList<Patch> *PatL, MyList<var> *VarList, int Symmetry)
 {
-  // Patch inner Synch
+  // Patch inner Synch (batch across all patches to reduce message count)
+  int patch_no = 0;
   MyList<Patch> *Pp = PatL;
   while (Pp)
   {
-    Sync(Pp->data, VarList, Symmetry);
+    patch_no++;
     Pp = Pp->next;
+  }
+
+  if (patch_no > 0)
+  {
+    int cpusize_inner;
+    MPI_Comm_size(MPI_COMM_WORLD, &cpusize_inner);
+    SyncPlanCache **inner_plans = new SyncPlanCache *[patch_no];
+
+    Pp = PatL;
+    for (int i = 0; i < patch_no; i++)
+    {
+      Patch *Pat = Pp->data;
+      const unsigned long long sig = patch_signature(Pat);
+      SyncPlanCache *plan = get_or_create_plan(g_patch_sync_cache, Pat);
+      if (plan->signature != sig || plan->cpusize != cpusize_inner || !plan->transfer_src || !plan->transfer_dst)
+      {
+        build_patch_sync_plan(plan, Pat, cpusize_inner);
+        plan->signature = sig;
+      }
+      inner_plans[i] = plan;
+      Pp = Pp->next;
+    }
+
+    transfer_sync_plan_batch(inner_plans, patch_no, VarList, VarList, Symmetry);
+    delete[] inner_plans;
   }
 
   // Patch inter Synch
   int cpusize;
   MPI_Comm_size(MPI_COMM_WORLD, &cpusize);
 
-  MyList<Parallel::gridseg> *dst;
-  MyList<Parallel::gridseg> **src, **transfer_src, **transfer_dst;
-  src = new MyList<Parallel::gridseg> *[cpusize];
-  transfer_src = new MyList<Parallel::gridseg> *[cpusize];
-  transfer_dst = new MyList<Parallel::gridseg> *[cpusize];
-
-  dst = build_buffer_gsl(PatL); // buffer region only
-  for (int node = 0; node < cpusize; node++)
+  const unsigned long long sig = patchlist_signature(PatL);
+  SyncPlanCache *plan = get_or_create_plan(g_patchlist_sync_cache, PatL);
+  if (plan->signature != sig || plan->cpusize != cpusize || !plan->transfer_src || !plan->transfer_dst)
   {
-    src[node] = build_owned_gsl(PatL, node, 5, Symmetry);                 // for the part without ghost nor buffer points and do not extend
-    build_gstl(src[node], dst, &transfer_src[node], &transfer_dst[node]); // for transfer[node], data locate on cpu#node
+    build_patchlist_sync_plan(plan, PatL, cpusize, Symmetry);
+    plan->signature = sig;
   }
 
-  transfer(transfer_src, transfer_dst, VarList, VarList, Symmetry);
-
-  if (dst)
-    dst->destroyList();
-  for (int node = 0; node < cpusize; node++)
-  {
-    if (src[node])
-      src[node]->destroyList();
-    if (transfer_src[node])
-      transfer_src[node]->destroyList();
-    if (transfer_dst[node])
-      transfer_dst[node]->destroyList();
-  }
-
-  delete[] src;
-  delete[] transfer_src;
-  delete[] transfer_dst;
+  transfer_sync_plan(plan, VarList, VarList, Symmetry);
 }
 // collect buffer grid segments or blocks for the periodic boundary condition of given patch
 // ---------------------------------------------------
@@ -4507,7 +5230,7 @@ void Parallel::Restrict(MyList<Patch> *PatcL, MyList<Patch> *PatfL,
 #ifdef Vertex
 #ifdef Cell
 #error Both Cell and Vertex are defined
-#endif    
+#endif
       src[node]=build_owned_gsl(PatfL,node,2,Symmetry);   // - buffer - ghost
 #else
 #ifdef Cell

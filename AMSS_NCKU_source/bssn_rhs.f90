@@ -82,6 +82,41 @@
   real*8, dimension(ex(1),ex(2),ex(3)) :: Gamxa,Gamya,Gamza,alpn1,chin1
   real*8, dimension(ex(1),ex(2),ex(3)) :: gupxx,gupxy,gupxz
   real*8, dimension(ex(1),ex(2),ex(3)) :: gupyy,gupyz,gupzz
+  real*8, dimension(ex(1),ex(2),ex(3)) :: Aupxx,Aupxy,Aupxz
+  real*8, dimension(ex(1),ex(2),ex(3)) :: Aupyy,Aupyz,Aupzz
+  real*8, dimension(ex(1),ex(2),ex(3)) :: d2bx_xx, d2bx_xy, d2bx_xz, d2bx_yy, d2bx_yz, d2bx_zz
+  real*8, dimension(ex(1),ex(2),ex(3)) :: d2by_xx, d2by_xy, d2by_xz, d2by_yy, d2by_yz, d2by_zz
+  real*8, dimension(ex(1),ex(2),ex(3)) :: d2bz_xx, d2bz_xy, d2bz_xz, d2bz_yy, d2bz_yz, d2bz_zz
+  real*8, dimension(ex(1),ex(2),ex(3)) :: gxxxx, gxxxy, gxxxz, gxxyy, gxxyz, gxxzz
+  real*8, dimension(ex(1),ex(2),ex(3)) :: gyyxx, gyyxy, gyyxz, gyyyy, gyyyz, gyyzz
+  real*8, dimension(ex(1),ex(2),ex(3)) :: gzzxx, gzzxy, gzzxz, gzzyy, gzzyz, gzzzz
+  real*8, dimension(ex(1),ex(2),ex(3)) :: gxyxx, gxyxy, gxyxz, gxyyy, gxyyz, gxyzz
+  real*8, dimension(ex(1),ex(2),ex(3)) :: gxzxx, gxzxy, gxzxz, gxzyy, gxzyz, gxzzz
+  real*8, dimension(ex(1),ex(2),ex(3)) :: gyzxx, gyzxy, gyzxz, gyzyy, gyzyz, gyzzz
+  real*8, dimension(ex(1),ex(2),ex(3)) :: chixx, chixy, chixz, chiyy, chiyz, chizz
+  real*8, dimension(ex(1),ex(2),ex(3)) :: lapxx, lapxy, lapxz, lapyy, lapyz, lapzz
+
+  integer :: i, j, k
+  real*8 :: L_gxx, L_gxy, L_gxz, L_gyy, L_gyz, L_gzz
+  real*8 :: L_Axx, L_Axy, L_Axz, L_Ayy, L_Ayz, L_Azz
+  real*8 :: L_gupxx, L_gupxy, L_gupxz, L_gupyy, L_gupyz, L_gupzz
+  real*8 :: L_Gamxa, L_Gamya, L_Gamza
+  real*8 :: L_gxxx, L_gxyx, L_gxzx, L_gyyx, L_gyzx, L_gzzx
+  real*8 :: L_gxxy, L_gxyy, L_gxzy, L_gyyy, L_gyzy, L_gzzy
+  real*8 :: L_gxxz, L_gxyz, L_gxzz, L_gyyz, L_gyzz, L_gzzz
+  real*8 :: L_Rxxt, L_Rxyt, L_Rxzt, L_Ryyt, L_Ryzt, L_Rzzt
+  real*8 :: L_Rxx, L_Rxy, L_Rxz, L_Ryy, L_Ryz, L_Rzz
+  real*8 :: L_chix, L_chiy, L_chiz
+  real*8 :: L_Dxx_chi, L_Dxy_chi, L_Dxz_chi, L_Dyy_chi, L_Dyz_chi, L_Dzz_chi
+  real*8 :: L_gxxx_p, L_gxxy_p, L_gxxz_p
+  real*8 :: L_Gamxxx_p, L_Gamyxx_p, L_Gamzxx_p, L_Gamxyy_p, L_Gamyyy_p, L_Gamzyy_p
+  real*8 :: L_Gamxzz_p, L_Gamyzz_p, L_Gamzzz_p, L_Gamxxy_p, L_Gamyxy_p, L_Gamzxy_p
+  real*8 :: L_Gamxxz_p, L_Gamyxz_p, L_Gamzxz_p, L_Gamxyz_p, L_Gamyyz_p, L_Gamzyz_p
+  real*8 :: L_lapx, L_lapy, L_lapz
+  real*8 :: L_lapxx, L_lapxy, L_lapxz, L_lapyy, L_lapyz, L_lapzz
+  real*8 :: L_lap_lap, L_S, L_f_trace, L_tf
+  real*8 :: L_tmp_xx, L_tmp_xy, L_tmp_xz, L_tmp_yy, L_tmp_yz, L_tmp_zz
+  real*8 :: L_div_beta, L_alpn1, L_chin1, L_f
 
   real*8,dimension(3) ::SSS,AAS,ASA,SAA,ASS,SAS,SSA
   real*8            :: dX, dY, dZ, PI
@@ -143,54 +178,67 @@
   dY = Y(2) - Y(1)
   dZ = Z(2) - Z(1)
 
-  alpn1 = Lap + ONE
-  chin1 = chi + ONE
-  gxx = dxx + ONE
-  gyy = dyy + ONE
-  gzz = dzz + ONE
-
   call fderivs(ex,betax,betaxx,betaxy,betaxz,X,Y,Z,ANTI, SYM, SYM,Symmetry,Lev)
   call fderivs(ex,betay,betayx,betayy,betayz,X,Y,Z, SYM,ANTI, SYM,Symmetry,Lev)
   call fderivs(ex,betaz,betazx,betazy,betazz,X,Y,Z, SYM, SYM,ANTI,Symmetry,Lev)
-  
-  div_beta = betaxx + betayy + betazz
- 
   call fderivs(ex,chi,chix,chiy,chiz,X,Y,Z,SYM,SYM,SYM,symmetry,Lev)
-
-  chi_rhs = F2o3 *chin1*( alpn1 * trK - div_beta ) !rhs for chi
-
   call fderivs(ex,dxx,gxxx,gxxy,gxxz,X,Y,Z,SYM ,SYM ,SYM ,Symmetry,Lev)
   call fderivs(ex,gxy,gxyx,gxyy,gxyz,X,Y,Z,ANTI,ANTI,SYM ,Symmetry,Lev)
   call fderivs(ex,gxz,gxzx,gxzy,gxzz,X,Y,Z,ANTI,SYM ,ANTI,Symmetry,Lev)
   call fderivs(ex,dyy,gyyx,gyyy,gyyz,X,Y,Z,SYM ,SYM ,SYM ,Symmetry,Lev)
   call fderivs(ex,gyz,gyzx,gyzy,gyzz,X,Y,Z,SYM ,ANTI,ANTI,Symmetry,Lev)
   call fderivs(ex,dzz,gzzx,gzzy,gzzz,X,Y,Z,SYM ,SYM ,SYM ,Symmetry,Lev)
+  call fderivs(ex,Lap,Lapx,Lapy,Lapz,X,Y,Z,SYM,SYM,SYM,Symmetry,Lev)
+  call fderivs(ex,trK,Kx,Ky,Kz,X,Y,Z,SYM,SYM,SYM,symmetry,Lev)
+  call fderivs(ex,Gamx,Gamxx,Gamxy,Gamxz,X,Y,Z,ANTI,SYM ,SYM ,Symmetry,Lev)
+  call fderivs(ex,Gamy,Gamyx,Gamyy,Gamyz,X,Y,Z,SYM ,ANTI,SYM ,Symmetry,Lev)
+  call fderivs(ex,Gamz,Gamzx,Gamzy,Gamzz,X,Y,Z,SYM ,SYM ,ANTI,Symmetry,Lev)
+
+  call fdderivs(ex, betax, d2bx_xx, d2bx_xy, d2bx_xz, d2bx_yy, d2bx_yz, d2bx_zz, &
+              X, Y, Z, ANTI, SYM, SYM, Symmetry, Lev)
+  call fdderivs(ex, betay, d2by_xx, d2by_xy, d2by_xz, d2by_yy, d2by_yz, d2by_zz, &
+              X, Y, Z, SYM, ANTI, SYM, Symmetry, Lev)
+  call fdderivs(ex, betaz, d2bz_xx, d2bz_xy, d2bz_xz, d2bz_yy, d2bz_yz, d2bz_zz, &
+              X, Y, Z, SYM, SYM, ANTI, Symmetry, Lev)
+  call fdderivs(ex,dxx,gxxxx,gxxxy,gxxxz,gxxyy,gxxyz,gxxzz,X,Y,Z,SYM,SYM,SYM,Symmetry,Lev)
+  call fdderivs(ex,dyy,gyyxx,gyyxy,gyyxz,gyyyy,gyyyz,gyyzz,X,Y,Z,SYM,SYM,SYM,Symmetry,Lev)
+  call fdderivs(ex,dzz,gzzxx,gzzxy,gzzxz,gzzyy,gzzyz,gzzzz,X,Y,Z,SYM,SYM,SYM,Symmetry,Lev)
+  call fdderivs(ex,gxy,gxyxx,gxyxy,gxyxz,gxyyy,gxyyz,gxyzz,X,Y,Z,ANTI,ANTI,SYM,Symmetry,Lev)
+  call fdderivs(ex,gxz,gxzxx,gxzxy,gxzxz,gxzyy,gxzyz,gxzzz,X,Y,Z,ANTI,SYM,ANTI,Symmetry,Lev)
+  call fdderivs(ex,gyz,gyzxx,gyzxy,gyzxz,gyzyy,gyzyz,gyzzz,X,Y,Z,SYM,ANTI,ANTI,Symmetry,Lev)
+  call fdderivs(ex,chi,chixx,chixy,chixz,chiyy,chiyz,chizz,X,Y,Z,SYM,SYM,SYM,Symmetry,Lev)
+  call fdderivs(ex,Lap,lapxx,lapxy,lapxz,lapyy,lapyz,lapzz,X,Y,Z,SYM,SYM,SYM,symmetry,Lev)
+
+  alpn1 = Lap + ONE
+  chin1 = chi + ONE
+
+  div_beta = betaxx + betayy + betazz
+
+  gxx = dxx + ONE
+  gyy = dyy + ONE
+  gzz = dzz + ONE
+
+  chi_rhs = F2o3 *chin1*( alpn1 * trK - div_beta )
 
   gxx_rhs = - TWO * alpn1 * Axx    -  F2o3 * gxx * div_beta          + &
               TWO *(  gxx * betaxx +   gxy * betayx +   gxz * betazx)
-
   gyy_rhs = - TWO * alpn1 * Ayy    -  F2o3 * gyy * div_beta          + &
               TWO *(  gxy * betaxy +   gyy * betayy +   gyz * betazy)
-
   gzz_rhs = - TWO * alpn1 * Azz    -  F2o3 * gzz * div_beta          + &
               TWO *(  gxz * betaxz +   gyz * betayz +   gzz * betazz)
-
   gxy_rhs = - TWO * alpn1 * Axy    +  F1o3 * gxy    * div_beta       + &
                       gxx * betaxy                  +   gxz * betazy + &
                                        gyy * betayx +   gyz * betazx   &
                                                     -   gxy * betazz
-
   gyz_rhs = - TWO * alpn1 * Ayz    +  F1o3 * gyz    * div_beta       + &
                       gxy * betaxz +   gyy * betayz                  + &
                       gxz * betaxy                  +   gzz * betazy   &
                                                     -   gyz * betaxx
- 
   gxz_rhs = - TWO * alpn1 * Axz    +  F1o3 * gxz    * div_beta       + &
                       gxx * betaxz +   gxy * betayz                  + &
                                        gyz * betayx +   gzz * betazx   &
-                                                    -   gxz * betayy     !rhs for gij
+                                                    -   gxz * betayy
 
-! invert tilted metric
   gupzz =  gxx * gyy * gzz + gxy * gyz * gxz + gxz * gxy * gyz - &
            gxz * gyy * gxz - gxy * gxy * gzz - gxx * gyz * gyz
   gupxx =   ( gyy * gzz - gyz * gyz ) / gupzz
@@ -231,7 +279,6 @@
                    +gupzz*(gupxz*gxzz+gupyz*gyzz+gupzz*gzzz))
   endif
 
-! second kind of connection
   Gamxxx =HALF*( gupxx*gxxx + gupxy*(TWO*gxyx - gxxy ) + gupxz*(TWO*gxzx - gxxz ))
   Gamyxx =HALF*( gupxy*gxxx + gupyy*(TWO*gxyx - gxxy ) + gupyz*(TWO*gxzx - gxxz ))
   Gamzxx =HALF*( gupxz*gxxx + gupyz*(TWO*gxyx - gxxy ) + gupzz*(TWO*gxzx - gxxz ))
@@ -255,73 +302,61 @@
   Gamxyz =HALF*( gupxx*( gxyz + gxzy - gyzx ) + gupxy*gyyz + gupxz*gzzy )
   Gamyyz =HALF*( gupxy*( gxyz + gxzy - gyzx ) + gupyy*gyyz + gupyz*gzzy )
   Gamzyz =HALF*( gupxz*( gxyz + gxzy - gyzx ) + gupyz*gyyz + gupzz*gzzy )
-! Raise indices of \tilde A_{ij} and store in R_ij
 
-  Rxx =    gupxx * gupxx * Axx + gupxy * gupxy * Ayy + gupxz * gupxz * Azz + &
+  Aupxx =    gupxx * gupxx * Axx + gupxy * gupxy * Ayy + gupxz * gupxz * Azz + &
       TWO*(gupxx * gupxy * Axy + gupxx * gupxz * Axz + gupxy * gupxz * Ayz)
 
-  Ryy =    gupxy * gupxy * Axx + gupyy * gupyy * Ayy + gupyz * gupyz * Azz + &
+  Aupyy =    gupxy * gupxy * Axx + gupyy * gupyy * Ayy + gupyz * gupyz * Azz + &
       TWO*(gupxy * gupyy * Axy + gupxy * gupyz * Axz + gupyy * gupyz * Ayz)
 
-  Rzz =    gupxz * gupxz * Axx + gupyz * gupyz * Ayy + gupzz * gupzz * Azz + &
+  Aupzz =    gupxz * gupxz * Axx + gupyz * gupyz * Ayy + gupzz * gupzz * Azz + &
       TWO*(gupxz * gupyz * Axy + gupxz * gupzz * Axz + gupyz * gupzz * Ayz)
 
-  Rxy =    gupxx * gupxy * Axx + gupxy * gupyy * Ayy + gupxz * gupyz * Azz + &
+  Aupxy =    gupxx * gupxy * Axx + gupxy * gupyy * Ayy + gupxz * gupyz * Azz + &
           (gupxx * gupyy       + gupxy * gupxy)* Axy                       + &
           (gupxx * gupyz       + gupxz * gupxy)* Axz                       + &
           (gupxy * gupyz       + gupxz * gupyy)* Ayz
 
-  Rxz =    gupxx * gupxz * Axx + gupxy * gupyz * Ayy + gupxz * gupzz * Azz + &
+  Aupxz =    gupxx * gupxz * Axx + gupxy * gupyz * Ayy + gupxz * gupzz * Azz + &
           (gupxx * gupyz       + gupxy * gupxz)* Axy                       + &
           (gupxx * gupzz       + gupxz * gupxz)* Axz                       + &
           (gupxy * gupzz       + gupxz * gupyz)* Ayz
 
-  Ryz =    gupxy * gupxz * Axx + gupyy * gupyz * Ayy + gupyz * gupzz * Azz + &
+  Aupyz =    gupxy * gupxz * Axx + gupyy * gupyz * Ayy + gupyz * gupzz * Azz + &
           (gupxy * gupyz       + gupyy * gupxz)* Axy                       + &
           (gupxy * gupzz       + gupyz * gupxz)* Axz                       + &
           (gupyy * gupzz       + gupyz * gupyz)* Ayz
-
-! Right hand side for Gam^i without shift terms...
-  call fderivs(ex,Lap,Lapx,Lapy,Lapz,X,Y,Z,SYM,SYM,SYM,Symmetry,Lev)
-  call fderivs(ex,trK,Kx,Ky,Kz,X,Y,Z,SYM,SYM,SYM,symmetry,Lev)
-
-   Gamx_rhs = - TWO * (   Lapx * Rxx +   Lapy * Rxy +   Lapz * Rxz ) + &
+        
+  Gamx_rhs = - TWO * (   Lapx * Aupxx +   Lapy * Aupxy +   Lapz * Aupxz ) + &
         TWO * alpn1 * (                                                &
-        -F3o2/chin1 * (   chix * Rxx +   chiy * Rxy +   chiz * Rxz ) - &
+        -F3o2/chin1 * (   chix * Aupxx +   chiy * Aupxy +   chiz * Aupxz ) - &
               gupxx * (   F2o3 * Kx  +  EIGHT * PI * Sx            ) - &
               gupxy * (   F2o3 * Ky  +  EIGHT * PI * Sy            ) - &
               gupxz * (   F2o3 * Kz  +  EIGHT * PI * Sz            ) + &
-                        Gamxxx * Rxx + Gamxyy * Ryy + Gamxzz * Rzz   + &
-                TWO * ( Gamxxy * Rxy + Gamxxz * Rxz + Gamxyz * Ryz ) )
+                        Gamxxx * Aupxx + Gamxyy * Aupyy + Gamxzz * Aupzz   + &
+                TWO * ( Gamxxy * Aupxy + Gamxxz * Aupxz + Gamxyz * Aupyz ) )
 
-   Gamy_rhs = - TWO * (   Lapx * Rxy +   Lapy * Ryy +   Lapz * Ryz ) + &
+   Gamy_rhs = - TWO * (   Lapx * Aupxy +   Lapy * Aupyy +   Lapz * Aupyz ) + &
         TWO * alpn1 * (                                                &
-        -F3o2/chin1 * (   chix * Rxy +  chiy * Ryy +    chiz * Ryz ) - &
+        -F3o2/chin1 * (   chix * Aupxy +  chiy * Aupyy +    chiz * Aupyz ) - &
               gupxy * (   F2o3 * Kx  +  EIGHT * PI * Sx            ) - &
               gupyy * (   F2o3 * Ky  +  EIGHT * PI * Sy            ) - &
               gupyz * (   F2o3 * Kz  +  EIGHT * PI * Sz            ) + &
-                        Gamyxx * Rxx + Gamyyy * Ryy + Gamyzz * Rzz   + &
-                TWO * ( Gamyxy * Rxy + Gamyxz * Rxz + Gamyyz * Ryz ) )
+                        Gamyxx * Aupxx + Gamyyy * Aupyy + Gamyzz * Aupzz   + &
+                TWO * ( Gamyxy * Aupxy + Gamyxz * Aupxz + Gamyyz * Aupyz ) )
 
-   Gamz_rhs = - TWO * (   Lapx * Rxz +   Lapy * Ryz +   Lapz * Rzz ) + &
+   Gamz_rhs = - TWO * (   Lapx * Aupxz +   Lapy * Aupyz +   Lapz * Aupzz ) + &
         TWO * alpn1 * (                                                &
-        -F3o2/chin1 * (   chix * Rxz +  chiy * Ryz +    chiz * Rzz ) - &
+        -F3o2/chin1 * (   chix * Aupxz +  chiy * Aupyz +    chiz * Aupzz ) - &
               gupxz * (   F2o3 * Kx  +  EIGHT * PI * Sx            ) - &
               gupyz * (   F2o3 * Ky  +  EIGHT * PI * Sy            ) - &
               gupzz * (   F2o3 * Kz  +  EIGHT * PI * Sz            ) + &
-                        Gamzxx * Rxx + Gamzyy * Ryy + Gamzzz * Rzz   + &
-                TWO * ( Gamzxy * Rxy + Gamzxz * Rxz + Gamzyz * Ryz ) )
+                        Gamzxx * Aupxx + Gamzyy * Aupyy + Gamzzz * Aupzz   + &
+                TWO * ( Gamzxy * Aupxy + Gamzxz * Aupxz + Gamzyz * Aupyz ) )
 
-  call fdderivs(ex,betax,gxxx,gxyx,gxzx,gyyx,gyzx,gzzx,&
-                X,Y,Z,ANTI,SYM, SYM ,Symmetry,Lev)
-  call fdderivs(ex,betay,gxxy,gxyy,gxzy,gyyy,gyzy,gzzy,&
-                X,Y,Z,SYM ,ANTI,SYM ,Symmetry,Lev)
-  call fdderivs(ex,betaz,gxxz,gxyz,gxzz,gyyz,gyzz,gzzz,&
-                X,Y,Z,SYM ,SYM, ANTI,Symmetry,Lev)
-
-  fxx = gxxx + gxyy + gxzz
-  fxy = gxyx + gyyy + gyzz
-  fxz = gxzx + gyzy + gzzz
+  fxx = d2bx_xx + d2by_xy + d2bz_xz
+  fxy = d2bx_xy + d2by_yy + d2bz_yz
+  fxz = d2bx_xz + d2by_yz + d2bz_zz
 
   Gamxa =       gupxx * Gamxxx + gupyy * Gamxyy + gupzz * Gamxzz + &
           TWO*( gupxy * Gamxxy + gupxz * Gamxxz + gupyz * Gamxyz )
@@ -330,461 +365,482 @@
   Gamza =       gupxx * Gamzxx + gupyy * Gamzyy + gupzz * Gamzzz + &
           TWO*( gupxy * Gamzxy + gupxz * Gamzxz + gupyz * Gamzyz )
 
-  call fderivs(ex,Gamx,Gamxx,Gamxy,Gamxz,X,Y,Z,ANTI,SYM ,SYM ,Symmetry,Lev)
-  call fderivs(ex,Gamy,Gamyx,Gamyy,Gamyz,X,Y,Z,SYM ,ANTI,SYM ,Symmetry,Lev)
-  call fderivs(ex,Gamz,Gamzx,Gamzy,Gamzz,X,Y,Z,SYM ,SYM ,ANTI,Symmetry,Lev)
-
   Gamx_rhs =               Gamx_rhs +  F2o3 *  Gamxa * div_beta        - &
                      Gamxa * betaxx - Gamya * betaxy - Gamza * betaxz  + &
              F1o3 * (gupxx * fxx    + gupxy * fxy    + gupxz * fxz    ) + &
-                     gupxx * gxxx   + gupyy * gyyx   + gupzz * gzzx    + &
-              TWO * (gupxy * gxyx   + gupxz * gxzx   + gupyz * gyzx  )
+                     gupxx * d2bx_xx   + gupyy * d2bx_yy   + gupzz * d2bx_zz    + &
+              TWO * (gupxy * d2bx_xy   + gupxz * d2bx_xz   + gupyz * d2bx_yz  )
 
   Gamy_rhs =               Gamy_rhs +  F2o3 *  Gamya * div_beta        - &
                      Gamxa * betayx - Gamya * betayy - Gamza * betayz  + &
              F1o3 * (gupxy * fxx    + gupyy * fxy    + gupyz * fxz    ) + &
-                     gupxx * gxxy   + gupyy * gyyy   + gupzz * gzzy    + &
-              TWO * (gupxy * gxyy   + gupxz * gxzy   + gupyz * gyzy  )
+                     gupxx * d2by_xx   + gupyy * d2by_yy   + gupzz * d2by_zz    + &
+              TWO * (gupxy * d2by_xy   + gupxz * d2by_xz   + gupyz * d2by_yz  )
 
   Gamz_rhs =               Gamz_rhs +  F2o3 *  Gamza * div_beta        - &
                      Gamxa * betazx - Gamya * betazy - Gamza * betazz  + &
              F1o3 * (gupxz * fxx    + gupyz * fxy    + gupzz * fxz    ) + &
-                     gupxx * gxxz   + gupyy * gyyz   + gupzz * gzzz    + &
-              TWO * (gupxy * gxyz   + gupxz * gxzz   + gupyz * gyzz  )    !rhs for Gam^i
+                     gupxx * d2bz_xx   + gupyy * d2bz_yy   + gupzz * d2bz_zz    + &
+              TWO * (gupxy * d2bz_xy   + gupxz * d2bz_xz   + gupyz * d2bz_yz  )
 
-!first kind of connection stored in gij,k
-  gxxx = gxx * Gamxxx + gxy * Gamyxx + gxz * Gamzxx
-  gxyx = gxx * Gamxxy + gxy * Gamyxy + gxz * Gamzxy
-  gxzx = gxx * Gamxxz + gxy * Gamyxz + gxz * Gamzxz
-  gyyx = gxx * Gamxyy + gxy * Gamyyy + gxz * Gamzyy
-  gyzx = gxx * Gamxyz + gxy * Gamyyz + gxz * Gamzyz
-  gzzx = gxx * Gamxzz + gxy * Gamyzz + gxz * Gamzzz
+  !$OMP PARALLEL DO PRIVATE(i, j, k, &
+  !$OMP& L_gxx, L_gxy, L_gxz, L_gyy, L_gyz, L_gzz, &
+  !$OMP& L_Axx, L_Axy, L_Axz, L_Ayy, L_Ayz, L_Azz, &
+  !$OMP& L_gupxx, L_gupxy, L_gupxz, L_gupyy, L_gupyz, L_gupzz, &
+  !$OMP& L_Gamxa, L_Gamya, L_Gamza, &
+  !$OMP& L_gxxx, L_gxyx, L_gxzx, L_gyyx, L_gyzx, L_gzzx, &
+  !$OMP& L_gxxy, L_gxyy, L_gxzy, L_gyyy, L_gyzy, L_gzzy, &
+  !$OMP& L_gxxz, L_gxyz, L_gxzz, L_gyyz, L_gyzz, L_gzzz, &
+  !$OMP& L_Rxxt, L_Rxyt, L_Rxzt, L_Ryyt, L_Ryzt, L_Rzzt, &
+  !$OMP& L_Rxx, L_Rxy, L_Rxz, L_Ryy, L_Ryz, L_Rzz, &
+  !$OMP& L_chix, L_chiy, L_chiz, &
+  !$OMP& L_Dxx_chi, L_Dxy_chi, L_Dxz_chi, L_Dyy_chi, L_Dyz_chi, L_Dzz_chi, &
+  !$OMP& L_gxxx_p, L_gxxy_p, L_gxxz_p, &
+  !$OMP& L_Gamxxx_p, L_Gamyxx_p, L_Gamzxx_p, L_Gamxyy_p, L_Gamyyy_p, L_Gamzyy_p, &
+  !$OMP& L_Gamxzz_p, L_Gamyzz_p, L_Gamzzz_p, L_Gamxxy_p, L_Gamyxy_p, L_Gamzxy_p, &
+  !$OMP& L_Gamxxz_p, L_Gamyxz_p, L_Gamzxz_p, L_Gamxyz_p, L_Gamyyz_p, L_Gamzyz_p, &
+  !$OMP& L_lapx, L_lapy, L_lapz, &
+  !$OMP& L_lapxx, L_lapxy, L_lapxz, L_lapyy, L_lapyz, L_lapzz, &
+  !$OMP& L_lap_lap, L_S, L_f_trace, L_tf, &
+  !$OMP& L_tmp_xx, L_tmp_xy, L_tmp_xz, L_tmp_yy, L_tmp_yz, L_tmp_zz, &
+  !$OMP& L_div_beta, L_alpn1, L_chin1, L_f) COLLAPSE(2)
+  do k = 1, ex(3)
+    do j = 1, ex(2)
+      !$OMP SIMD
+      do i = 1, ex(1)
+        L_chin1 = chin1(i,j,k)
+        L_alpn1 = alpn1(i,j,k)
+        L_div_beta = div_beta(i,j,k)
 
-  gxxy = gxy * Gamxxx + gyy * Gamyxx + gyz * Gamzxx
-  gxyy = gxy * Gamxxy + gyy * Gamyxy + gyz * Gamzxy
-  gxzy = gxy * Gamxxz + gyy * Gamyxz + gyz * Gamzxz
-  gyyy = gxy * Gamxyy + gyy * Gamyyy + gyz * Gamzyy
-  gyzy = gxy * Gamxyz + gyy * Gamyyz + gyz * Gamzyz
-  gzzy = gxy * Gamxzz + gyy * Gamyzz + gyz * Gamzzz
+        L_gxx = gxx(i,j,k); L_gxy = gxy(i,j,k); L_gxz = gxz(i,j,k)
+        L_gyy = gyy(i,j,k); L_gyz = gyz(i,j,k); L_gzz = gzz(i,j,k)
 
-  gxxz = gxz * Gamxxx + gyz * Gamyxx + gzz * Gamzxx
-  gxyz = gxz * Gamxxy + gyz * Gamyxy + gzz * Gamzxy
-  gxzz = gxz * Gamxxz + gyz * Gamyxz + gzz * Gamzxz
-  gyyz = gxz * Gamxyy + gyz * Gamyyy + gzz * Gamzyy
-  gyzz = gxz * Gamxyz + gyz * Gamyyz + gzz * Gamzyz
-  gzzz = gxz * Gamxzz + gyz * Gamyzz + gzz * Gamzzz
+        L_Axx = Axx(i,j,k); L_Axy = Axy(i,j,k); L_Axz = Axz(i,j,k)
+        L_Ayy = Ayy(i,j,k); L_Ayz = Ayz(i,j,k); L_Azz = Azz(i,j,k)
 
-!compute Ricci tensor for tilted metric
-   call fdderivs(ex,dxx,fxx,fxy,fxz,fyy,fyz,fzz,X,Y,Z,SYM ,SYM ,SYM ,symmetry,Lev)
-   Rxx =   gupxx * fxx + gupyy * fyy + gupzz * fzz + &
-         ( gupxy * fxy + gupxz * fxz + gupyz * fyz ) * TWO
+        L_gupxx = gupxx(i,j,k)
+        L_gupxy = gupxy(i,j,k)
+        L_gupxz = gupxz(i,j,k)
+        L_gupyy = gupyy(i,j,k)
+        L_gupyz = gupyz(i,j,k)
+        L_gupzz = gupzz(i,j,k)
 
-   call fdderivs(ex,dyy,fxx,fxy,fxz,fyy,fyz,fzz,X,Y,Z,SYM ,SYM ,SYM ,symmetry,Lev)
-   Ryy =   gupxx * fxx + gupyy * fyy + gupzz * fzz + &
-         ( gupxy * fxy + gupxz * fxz + gupyz * fyz ) * TWO
+        L_Gamxa = Gamxa(i,j,k)
+        L_Gamya = Gamya(i,j,k)
+        L_Gamza = Gamza(i,j,k)
 
-   call fdderivs(ex,dzz,fxx,fxy,fxz,fyy,fyz,fzz,X,Y,Z,SYM ,SYM ,SYM ,symmetry,Lev)
-   Rzz =   gupxx * fxx + gupyy * fyy + gupzz * fzz + &
-         ( gupxy * fxy + gupxz * fxz + gupyz * fyz ) * TWO
+        L_gxxx = L_gxx * Gamxxx(i,j,k) + L_gxy * Gamyxx(i,j,k) + L_gxz * Gamzxx(i,j,k)
+        L_gxyx = L_gxx * Gamxxy(i,j,k) + L_gxy * Gamyxy(i,j,k) + L_gxz * Gamzxy(i,j,k)
+        L_gxzx = L_gxx * Gamxxz(i,j,k) + L_gxy * Gamyxz(i,j,k) + L_gxz * Gamzxz(i,j,k)
+        L_gyyx = L_gxx * Gamxyy(i,j,k) + L_gxy * Gamyyy(i,j,k) + L_gxz * Gamzyy(i,j,k)
+        L_gyzx = L_gxx * Gamxyz(i,j,k) + L_gxy * Gamyyz(i,j,k) + L_gxz * Gamzyz(i,j,k)
+        L_gzzx = L_gxx * Gamxzz(i,j,k) + L_gxy * Gamyzz(i,j,k) + L_gxz * Gamzzz(i,j,k)
 
-   call fdderivs(ex,gxy,fxx,fxy,fxz,fyy,fyz,fzz,X,Y,Z,ANTI, ANTI,SYM ,symmetry,Lev)
-   Rxy =   gupxx * fxx + gupyy * fyy + gupzz * fzz + &
-         ( gupxy * fxy + gupxz * fxz + gupyz * fyz ) * TWO
+        L_gxxy = L_gxy * Gamxxx(i,j,k) + L_gyy * Gamyxx(i,j,k) + L_gyz * Gamzxx(i,j,k)
+        L_gxyy = L_gxy * Gamxxy(i,j,k) + L_gyy * Gamyxy(i,j,k) + L_gyz * Gamzxy(i,j,k)
+        L_gxzy = L_gxy * Gamxxz(i,j,k) + L_gyy * Gamyxz(i,j,k) + L_gyz * Gamzxz(i,j,k)
+        L_gyyy = L_gxy * Gamxyy(i,j,k) + L_gyy * Gamyyy(i,j,k) + L_gyz * Gamzyy(i,j,k)
+        L_gyzy = L_gxy * Gamxyz(i,j,k) + L_gyy * Gamyyz(i,j,k) + L_gyz * Gamzyz(i,j,k)
+        L_gzzy = L_gxy * Gamxzz(i,j,k) + L_gyy * Gamyzz(i,j,k) + L_gyz * Gamzzz(i,j,k)
 
-   call fdderivs(ex,gxz,fxx,fxy,fxz,fyy,fyz,fzz,X,Y,Z,ANTI ,SYM ,ANTI,symmetry,Lev)
-   Rxz =   gupxx * fxx + gupyy * fyy + gupzz * fzz + &
-         ( gupxy * fxy + gupxz * fxz + gupyz * fyz ) * TWO
+        L_gxxz = L_gxz * Gamxxx(i,j,k) + L_gyz * Gamyxx(i,j,k) + L_gzz * Gamzxx(i,j,k)
+        L_gxyz = L_gxz * Gamxxy(i,j,k) + L_gyz * Gamyxy(i,j,k) + L_gzz * Gamzxy(i,j,k)
+        L_gxzz = L_gxz * Gamxxz(i,j,k) + L_gyz * Gamyxz(i,j,k) + L_gzz * Gamzxz(i,j,k)
+        L_gyyz = L_gxz * Gamxyy(i,j,k) + L_gyz * Gamyyy(i,j,k) + L_gzz * Gamzyy(i,j,k)
+        L_gyzz = L_gxz * Gamxyz(i,j,k) + L_gyz * Gamyyz(i,j,k) + L_gzz * Gamzyz(i,j,k)
+        L_gzzz = L_gxz * Gamxzz(i,j,k) + L_gyz * Gamyzz(i,j,k) + L_gzz * Gamzzz(i,j,k)
 
-   call fdderivs(ex,gyz,fxx,fxy,fxz,fyy,fyz,fzz,X,Y,Z,SYM ,ANTI ,ANTI,symmetry,Lev)
-   Ryz =   gupxx * fxx + gupyy * fyy + gupzz * fzz + &
-         ( gupxy * fxy + gupxz * fxz + gupyz * fyz ) * TWO
+        L_Rxxt = L_gupxx*gxxxx(i,j,k) + L_gupyy*gxxyy(i,j,k) + L_gupzz*gxxzz(i,j,k) + &
+                TWO*(L_gupxy*gxxxy(i,j,k) + L_gupxz*gxxxz(i,j,k) + L_gupyz*gxxyz(i,j,k))
+        L_Ryyt = L_gupxx*gyyxx(i,j,k) + L_gupyy*gyyyy(i,j,k) + L_gupzz*gyyzz(i,j,k) + &
+                TWO*(L_gupxy*gyyxy(i,j,k) + L_gupxz*gyyxz(i,j,k) + L_gupyz*gyyyz(i,j,k))
+        L_Rzzt = L_gupxx*gzzxx(i,j,k) + L_gupyy*gzzyy(i,j,k) + L_gupzz*gzzzz(i,j,k) + &
+                TWO*(L_gupxy*gzzxy(i,j,k) + L_gupxz*gzzxz(i,j,k) + L_gupyz*gzzyz(i,j,k))
+        L_Rxyt = L_gupxx*gxyxx(i,j,k) + L_gupyy*gxyyy(i,j,k) + L_gupzz*gxyzz(i,j,k) + &
+                TWO*(L_gupxy*gxyxy(i,j,k) + L_gupxz*gxyxz(i,j,k) + L_gupyz*gxyyz(i,j,k))
+        L_Rxzt = L_gupxx*gxzxx(i,j,k) + L_gupyy*gxzyy(i,j,k) + L_gupzz*gxzzz(i,j,k) + &
+                TWO*(L_gupxy*gxzxy(i,j,k) + L_gupxz*gxzxz(i,j,k) + L_gupyz*gxzyz(i,j,k))
+        L_Ryzt = L_gupxx*gyzxx(i,j,k) + L_gupyy*gyzyy(i,j,k) + L_gupzz*gyzzz(i,j,k) + &
+                TWO*(L_gupxy*gyzxy(i,j,k) + L_gupxz*gyzxz(i,j,k) + L_gupyz*gyzyz(i,j,k))
 
-  Rxx =     - HALF * Rxx                                   + &
-               gxx * Gamxx+ gxy * Gamyx   +    gxz * Gamzx + &
-             Gamxa * gxxx +  Gamya * gxyx +  Gamza * gxzx  + &
-   gupxx *(                                                  &
-       TWO*(Gamxxx * gxxx + Gamyxx * gxyx + Gamzxx * gxzx) + &
-            Gamxxx * gxxx + Gamyxx * gxxy + Gamzxx * gxxz )+ &
-   gupxy *(                                                  &
-       TWO*(Gamxxx * gxyx + Gamyxx * gyyx + Gamzxx * gyzx  + &
-            Gamxxy * gxxx + Gamyxy * gxyx + Gamzxy * gxzx) + &
-            Gamxxy * gxxx + Gamyxy * gxxy + Gamzxy * gxxz  + &
-            Gamxxx * gxyx + Gamyxx * gxyy + Gamzxx * gxyz )+ &
-   gupxz *(                                                  &
-       TWO*(Gamxxx * gxzx + Gamyxx * gyzx + Gamzxx * gzzx  + &
-            Gamxxz * gxxx + Gamyxz * gxyx + Gamzxz * gxzx) + &
-            Gamxxz * gxxx + Gamyxz * gxxy + Gamzxz * gxxz  + &
-            Gamxxx * gxzx + Gamyxx * gxzy + Gamzxx * gxzz )+ &
-   gupyy *(                                                  &
-       TWO*(Gamxxy * gxyx + Gamyxy * gyyx + Gamzxy * gyzx) + &
-            Gamxxy * gxyx + Gamyxy * gxyy + Gamzxy * gxyz )+ &
-   gupyz *(                                                  &
-       TWO*(Gamxxy * gxzx + Gamyxy * gyzx + Gamzxy * gzzx  + &
-            Gamxxz * gxyx + Gamyxz * gyyx + Gamzxz * gyzx) + &
-            Gamxxz * gxyx + Gamyxz * gxyy + Gamzxz * gxyz  + &
-            Gamxxy * gxzx + Gamyxy * gxzy + Gamzxy * gxzz )+ &
-   gupzz *(                                                  &
-       TWO*(Gamxxz * gxzx + Gamyxz * gyzx + Gamzxz * gzzx) + &
-            Gamxxz * gxzx + Gamyxz * gxzy + Gamzxz * gxzz )
+        L_Rxx = - HALF * L_Rxxt + &
+                L_gxx * Gamxx(i,j,k) + L_gxy * Gamyx(i,j,k) + L_gxz * Gamzx(i,j,k) + &
+                L_Gamxa * L_gxxx + L_Gamya * L_gxyx + L_Gamza * L_gxzx + &
+                L_gupxx * ( &
+                  TWO * (Gamxxx(i,j,k) * L_gxxx + Gamyxx(i,j,k) * L_gxyx + Gamzxx(i,j,k) * L_gxzx) + &
+                  Gamxxx(i,j,k) * L_gxxx + Gamyxx(i,j,k) * L_gxxy + Gamzxx(i,j,k) * L_gxxz) + &
+                L_gupyy * ( &
+                  TWO * (Gamxxy(i,j,k) * L_gxyx + Gamyxy(i,j,k) * L_gyyx + Gamzxy(i,j,k) * L_gyzx) + &
+                  Gamxxy(i,j,k) * L_gxyx + Gamyxy(i,j,k) * L_gxyy + Gamzxy(i,j,k) * L_gxyz) + &
+                L_gupzz * ( &
+                  TWO * (Gamxxz(i,j,k) * L_gxzx + Gamyxz(i,j,k) * L_gyzx + Gamzxz(i,j,k) * L_gzzx) + &
+                  Gamxxz(i,j,k) * L_gxzx + Gamyxz(i,j,k) * L_gxzy + Gamzxz(i,j,k) * L_gxzz) + &
+                L_gupxy * ( &
+                  TWO * (Gamxxx(i,j,k) * L_gxyx + Gamyxx(i,j,k) * L_gyyx + Gamzxx(i,j,k) * L_gyzx + &
+                  Gamxxy(i,j,k) * L_gxxx + Gamyxy(i,j,k) * L_gxyx + Gamzxy(i,j,k) * L_gxzx) + &
+                  Gamxxy(i,j,k) * L_gxxx + Gamyxy(i,j,k) * L_gxxy + Gamzxy(i,j,k) * L_gxxz + &
+                  Gamxxx(i,j,k) * L_gxyx + Gamyxx(i,j,k) * L_gxyy + Gamzxx(i,j,k) * L_gxyz) + &
+                L_gupxz * ( &
+                  TWO * (Gamxxx(i,j,k) * L_gxzx + Gamyxx(i,j,k) * L_gyzx + Gamzxx(i,j,k) * L_gzzx + &
+                  Gamxxz(i,j,k) * L_gxxx + Gamyxz(i,j,k) * L_gxyx + Gamzxz(i,j,k) * L_gxzx) + &
+                  Gamxxz(i,j,k) * L_gxxx + Gamyxz(i,j,k) * L_gxxy + Gamzxz(i,j,k) * L_gxxz + &
+                  Gamxxx(i,j,k) * L_gxzx + Gamyxx(i,j,k) * L_gxzy + Gamzxx(i,j,k) * L_gxzz) + &
+                L_gupyz * ( &
+                  TWO * (Gamxxy(i,j,k) * L_gxzx + Gamyxy(i,j,k) * L_gyzx + Gamzxy(i,j,k) * L_gzzx + &
+                  Gamxxz(i,j,k) * L_gxyx + Gamyxz(i,j,k) * L_gyyx + Gamzxz(i,j,k) * L_gyzx) + &
+                  Gamxxz(i,j,k) * L_gxyx + Gamyxz(i,j,k) * L_gxyy + Gamzxz(i,j,k) * L_gxyz + &
+                  Gamxxy(i,j,k) * L_gxzx + Gamyxy(i,j,k) * L_gxzy + Gamzxy(i,j,k) * L_gxzz)
 
-  Ryy =     - HALF * Ryy                                   + &
-               gxy * Gamxy+  gyy * Gamyy  +  gyz * Gamzy   + &
-             Gamxa * gxyy +  Gamya * gyyy +  Gamza * gyzy  + &
-   gupxx *(                                                  &
-       TWO*(Gamxxy * gxxy + Gamyxy * gxyy + Gamzxy * gxzy) + &
-            Gamxxy * gxyx + Gamyxy * gxyy + Gamzxy * gxyz )+ &
-   gupxy *(                                                  &
-       TWO*(Gamxxy * gxyy + Gamyxy * gyyy + Gamzxy * gyzy  + &
-            Gamxyy * gxxy + Gamyyy * gxyy + Gamzyy * gxzy) + &
-            Gamxyy * gxyx + Gamyyy * gxyy + Gamzyy * gxyz  + &
-            Gamxxy * gyyx + Gamyxy * gyyy + Gamzxy * gyyz )+ &
-   gupxz *(                                                  &
-       TWO*(Gamxxy * gxzy + Gamyxy * gyzy + Gamzxy * gzzy  + &
-            Gamxyz * gxxy + Gamyyz * gxyy + Gamzyz * gxzy) + &
-            Gamxyz * gxyx + Gamyyz * gxyy + Gamzyz * gxyz  + &
-            Gamxxy * gyzx + Gamyxy * gyzy + Gamzxy * gyzz )+ &
-   gupyy *(                                                  &
-       TWO*(Gamxyy * gxyy + Gamyyy * gyyy + Gamzyy * gyzy) + &
-            Gamxyy * gyyx + Gamyyy * gyyy + Gamzyy * gyyz )+ &
-   gupyz *(                                                  &
-       TWO*(Gamxyy * gxzy + Gamyyy * gyzy + Gamzyy * gzzy  + &
-            Gamxyz * gxyy + Gamyyz * gyyy + Gamzyz * gyzy) + &
-            Gamxyz * gyyx + Gamyyz * gyyy + Gamzyz * gyyz  + &
-            Gamxyy * gyzx + Gamyyy * gyzy + Gamzyy * gyzz )+ &
-   gupzz *(                                                  &
-       TWO*(Gamxyz * gxzy + Gamyyz * gyzy + Gamzyz * gzzy) + &
-            Gamxyz * gyzx + Gamyyz * gyzy + Gamzyz * gyzz )
+        L_Ryy = - HALF * L_Ryyt + &
+                L_gxy * Gamxy(i,j,k) + L_gyy * Gamyy(i,j,k) + L_gyz * Gamzy(i,j,k) + &
+                L_Gamxa * L_gxyy + L_Gamya * L_gyyy + L_Gamza * L_gyzy + &
+                L_gupxx * ( &
+                  TWO * (Gamxxy(i,j,k) * L_gxxy + Gamyxy(i,j,k) * L_gxyy + Gamzxy(i,j,k) * L_gxzy) + &
+                  Gamxxy(i,j,k) * L_gxyx + Gamyxy(i,j,k) * L_gxyy + Gamzxy(i,j,k) * L_gxyz) + &
+                L_gupyy * ( &
+                  TWO * (Gamxyy(i,j,k) * L_gxyy + Gamyyy(i,j,k) * L_gyyy + Gamzyy(i,j,k) * L_gyzy) + &
+                  Gamxyy(i,j,k) * L_gyyx + Gamyyy(i,j,k) * L_gyyy + Gamzyy(i,j,k) * L_gyyz) + &
+                L_gupzz * ( &
+                  TWO * (Gamxyz(i,j,k) * L_gxzy + Gamyyz(i,j,k) * L_gyzy + Gamzyz(i,j,k) * L_gzzy) + &
+                  Gamxyz(i,j,k) * L_gyzx + Gamyyz(i,j,k) * L_gyzy + Gamzyz(i,j,k) * L_gyzz) + &
+                L_gupxy * ( &
+                  TWO * (Gamxxy(i,j,k) * L_gxyy + Gamyxy(i,j,k) * L_gyyy + Gamzxy(i,j,k) * L_gyzy + &
+                        Gamxyy(i,j,k) * L_gxxy + Gamyyy(i,j,k) * L_gxyy + Gamzyy(i,j,k) * L_gxzy) + &
+                  Gamxyy(i,j,k) * L_gxyx + Gamyyy(i,j,k) * L_gxyy + Gamzyy(i,j,k) * L_gxyz + &
+                  Gamxxy(i,j,k) * L_gyyx + Gamyxy(i,j,k) * L_gyyy + Gamzxy(i,j,k) * L_gyyz) + &
+                L_gupxz * ( &
+                  TWO * (Gamxxy(i,j,k) * L_gxzy + Gamyxy(i,j,k) * L_gyzy + Gamzxy(i,j,k) * L_gzzy + &
+                        Gamxyz(i,j,k) * L_gxxy + Gamyyz(i,j,k) * L_gxyy + Gamzyz(i,j,k) * L_gxzy) + &
+                  Gamxyz(i,j,k) * L_gxyx + Gamyyz(i,j,k) * L_gxyy + Gamzyz(i,j,k) * L_gxyz + &
+                  Gamxxy(i,j,k) * L_gyzx + Gamyxy(i,j,k) * L_gyzy + Gamzxy(i,j,k) * L_gyzz) + &
+                L_gupyz * ( &
+                  TWO * (Gamxyy(i,j,k) * L_gxzy + Gamyyy(i,j,k) * L_gyzy + Gamzyy(i,j,k) * L_gzzy + &
+                        Gamxyz(i,j,k) * L_gxyy + Gamyyz(i,j,k) * L_gyyy + Gamzyz(i,j,k) * L_gyzy) + &
+                  Gamxyz(i,j,k) * L_gyyx + Gamyyz(i,j,k) * L_gyyy + Gamzyz(i,j,k) * L_gyyz + &
+                  Gamxyy(i,j,k) * L_gyzx + Gamyyy(i,j,k) * L_gyzy + Gamzyy(i,j,k) * L_gyzz)
 
-  Rzz =     - HALF * Rzz                                   + &
-               gxz * Gamxz+ gyz * Gamyz  +    gzz * Gamzz  + &
-             Gamxa * gxzz +  Gamya * gyzz +  Gamza * gzzz  + &
-   gupxx *(                                                  &
-       TWO*(Gamxxz * gxxz + Gamyxz * gxyz + Gamzxz * gxzz) + &
-            Gamxxz * gxzx + Gamyxz * gxzy + Gamzxz * gxzz )+ &
-   gupxy *(                                                  &
-       TWO*(Gamxxz * gxyz + Gamyxz * gyyz + Gamzxz * gyzz  + &
-            Gamxyz * gxxz + Gamyyz * gxyz + Gamzyz * gxzz) + &
-            Gamxyz * gxzx + Gamyyz * gxzy + Gamzyz * gxzz  + &
-            Gamxxz * gyzx + Gamyxz * gyzy + Gamzxz * gyzz )+ &
-   gupxz *(                                                  &
-       TWO*(Gamxxz * gxzz + Gamyxz * gyzz + Gamzxz * gzzz  + &
-            Gamxzz * gxxz + Gamyzz * gxyz + Gamzzz * gxzz) + &
-            Gamxzz * gxzx + Gamyzz * gxzy + Gamzzz * gxzz  + &
-            Gamxxz * gzzx + Gamyxz * gzzy + Gamzxz * gzzz )+ &
-   gupyy *(                                                  &
-       TWO*(Gamxyz * gxyz + Gamyyz * gyyz + Gamzyz * gyzz) + &
-            Gamxyz * gyzx + Gamyyz * gyzy + Gamzyz * gyzz )+ &
-   gupyz *(                                                  &
-       TWO*(Gamxyz * gxzz + Gamyyz * gyzz + Gamzyz * gzzz  + &
-            Gamxzz * gxyz + Gamyzz * gyyz + Gamzzz * gyzz) + &
-            Gamxzz * gyzx + Gamyzz * gyzy + Gamzzz * gyzz  + &
-            Gamxyz * gzzx + Gamyyz * gzzy + Gamzyz * gzzz )+ &
-   gupzz *(                                                  &
-       TWO*(Gamxzz * gxzz + Gamyzz * gyzz + Gamzzz * gzzz) + &
-            Gamxzz * gzzx + Gamyzz * gzzy + Gamzzz * gzzz )
-
-  Rxy = HALF*(     - Rxy                                   + &
-               gxx * Gamxy +    gxy * Gamyy + gxz * Gamzy  + &
-               gxy * Gamxx +    gyy * Gamyx + gyz * Gamzx  + &
-             Gamxa * gxyx +  Gamya * gyyx +  Gamza * gyzx  + &
-             Gamxa * gxxy +  Gamya * gxyy +  Gamza * gxzy )+ &
-   gupxx *(                                                  &
-            Gamxxx * gxxy + Gamyxx * gxyy + Gamzxx * gxzy  + &
-            Gamxxy * gxxx + Gamyxy * gxyx + Gamzxy * gxzx  + &
-            Gamxxx * gxyx + Gamyxx * gxyy + Gamzxx * gxyz )+ &
-   gupxy *(                                                  &
-            Gamxxx * gxyy + Gamyxx * gyyy + Gamzxx * gyzy  + &
-            Gamxxy * gxyx + Gamyxy * gyyx + Gamzxy * gyzx  + &
-            Gamxxy * gxyx + Gamyxy * gxyy + Gamzxy * gxyz  + &
-            Gamxxy * gxxy + Gamyxy * gxyy + Gamzxy * gxzy  + &
-            Gamxyy * gxxx + Gamyyy * gxyx + Gamzyy * gxzx  + &
-            Gamxxx * gyyx + Gamyxx * gyyy + Gamzxx * gyyz )+ &
-   gupxz *(                                                  &
-            Gamxxx * gxzy + Gamyxx * gyzy + Gamzxx * gzzy  + &
-            Gamxxy * gxzx + Gamyxy * gyzx + Gamzxy * gzzx  + &
-            Gamxxz * gxyx + Gamyxz * gxyy + Gamzxz * gxyz  + &
-            Gamxxz * gxxy + Gamyxz * gxyy + Gamzxz * gxzy  + &
-            Gamxyz * gxxx + Gamyyz * gxyx + Gamzyz * gxzx  + &
-            Gamxxx * gyzx + Gamyxx * gyzy + Gamzxx * gyzz )+ &
-   gupyy *(                                                  &
-            Gamxxy * gxyy + Gamyxy * gyyy + Gamzxy * gyzy  + &
-            Gamxyy * gxyx + Gamyyy * gyyx + Gamzyy * gyzx  + &
-            Gamxxy * gyyx + Gamyxy * gyyy + Gamzxy * gyyz )+ &
-   gupyz *(                                                  &
-            Gamxxy * gxzy + Gamyxy * gyzy + Gamzxy * gzzy  + &
-            Gamxyy * gxzx + Gamyyy * gyzx + Gamzyy * gzzx  + &
-            Gamxxz * gyyx + Gamyxz * gyyy + Gamzxz * gyyz  + &
-            Gamxxz * gxyy + Gamyxz * gyyy + Gamzxz * gyzy  + &
-            Gamxyz * gxyx + Gamyyz * gyyx + Gamzyz * gyzx  + &
-            Gamxxy * gyzx + Gamyxy * gyzy + Gamzxy * gyzz )+ &
-   gupzz *(                                                  &
-            Gamxxz * gxzy + Gamyxz * gyzy + Gamzxz * gzzy  + &
-            Gamxyz * gxzx + Gamyyz * gyzx + Gamzyz * gzzx  + &
-            Gamxxz * gyzx + Gamyxz * gyzy + Gamzxz * gyzz )
-
-  Rxz = HALF*(     - Rxz                                   + &
-               gxx * Gamxz +  gxy * Gamyz + gxz * Gamzz    + &
-               gxz * Gamxx +  gyz * Gamyx + gzz * Gamzx    + &
-             Gamxa * gxzx +  Gamya * gyzx +  Gamza * gzzx  + &
-             Gamxa * gxxz +  Gamya * gxyz +  Gamza * gxzz )+ &
-   gupxx *(                                                  &
-            Gamxxx * gxxz + Gamyxx * gxyz + Gamzxx * gxzz  + &
-            Gamxxz * gxxx + Gamyxz * gxyx + Gamzxz * gxzx  + &
-            Gamxxx * gxzx + Gamyxx * gxzy + Gamzxx * gxzz )+ &
-   gupxy *(                                                  &
-            Gamxxx * gxyz + Gamyxx * gyyz + Gamzxx * gyzz  + &
-            Gamxxz * gxyx + Gamyxz * gyyx + Gamzxz * gyzx  + &
-            Gamxxy * gxzx + Gamyxy * gxzy + Gamzxy * gxzz  + &
-            Gamxxy * gxxz + Gamyxy * gxyz + Gamzxy * gxzz  + &
-            Gamxyz * gxxx + Gamyyz * gxyx + Gamzyz * gxzx  + &
-            Gamxxx * gyzx + Gamyxx * gyzy + Gamzxx * gyzz )+ &
-   gupxz *(                                                  &
-            Gamxxx * gxzz + Gamyxx * gyzz + Gamzxx * gzzz  + &
-            Gamxxz * gxzx + Gamyxz * gyzx + Gamzxz * gzzx  + &
-            Gamxxz * gxzx + Gamyxz * gxzy + Gamzxz * gxzz  + &
-            Gamxxz * gxxz + Gamyxz * gxyz + Gamzxz * gxzz  + &
-            Gamxzz * gxxx + Gamyzz * gxyx + Gamzzz * gxzx  + &
-            Gamxxx * gzzx + Gamyxx * gzzy + Gamzxx * gzzz )+ &
-   gupyy *(                                                  &
-            Gamxxy * gxyz + Gamyxy * gyyz + Gamzxy * gyzz  + &
-            Gamxyz * gxyx + Gamyyz * gyyx + Gamzyz * gyzx  + &
-            Gamxxy * gyzx + Gamyxy * gyzy + Gamzxy * gyzz )+ &
-   gupyz *(                                                  &
-            Gamxxy * gxzz + Gamyxy * gyzz + Gamzxy * gzzz  + &
-            Gamxyz * gxzx + Gamyyz * gyzx + Gamzyz * gzzx  + &
-            Gamxxz * gyzx + Gamyxz * gyzy + Gamzxz * gyzz  + &
-            Gamxxz * gxyz + Gamyxz * gyyz + Gamzxz * gyzz  + &
-            Gamxzz * gxyx + Gamyzz * gyyx + Gamzzz * gyzx  + &
-            Gamxxy * gzzx + Gamyxy * gzzy + Gamzxy * gzzz )+ &
-   gupzz *(                                                  &
-            Gamxxz * gxzz + Gamyxz * gyzz + Gamzxz * gzzz  + &
-            Gamxzz * gxzx + Gamyzz * gyzx + Gamzzz * gzzx  + &
-            Gamxxz * gzzx + Gamyxz * gzzy + Gamzxz * gzzz )
-
-  Ryz = HALF*(     - Ryz                                   + &
-               gxy * Gamxz + gyy * Gamyz + gyz * Gamzz     + &
-               gxz * Gamxy + gyz * Gamyy + gzz * Gamzy     + &
-             Gamxa * gxzy +  Gamya * gyzy +  Gamza * gzzy  + &
-             Gamxa * gxyz +  Gamya * gyyz +  Gamza * gyzz )+ &
-   gupxx *(                                                  &
-            Gamxxy * gxxz + Gamyxy * gxyz + Gamzxy * gxzz  + &
-            Gamxxz * gxxy + Gamyxz * gxyy + Gamzxz * gxzy  + &
-            Gamxxy * gxzx + Gamyxy * gxzy + Gamzxy * gxzz )+ &
-   gupxy *(                                                  &
-            Gamxxy * gxyz + Gamyxy * gyyz + Gamzxy * gyzz  + &
-            Gamxxz * gxyy + Gamyxz * gyyy + Gamzxz * gyzy  + &
-            Gamxyy * gxzx + Gamyyy * gxzy + Gamzyy * gxzz  + &
-            Gamxyy * gxxz + Gamyyy * gxyz + Gamzyy * gxzz  + &
-            Gamxyz * gxxy + Gamyyz * gxyy + Gamzyz * gxzy  + &
-            Gamxxy * gyzx + Gamyxy * gyzy + Gamzxy * gyzz )+ &
-   gupxz *(                                                  &
-            Gamxxy * gxzz + Gamyxy * gyzz + Gamzxy * gzzz  + &
-            Gamxxz * gxzy + Gamyxz * gyzy + Gamzxz * gzzy  + &
-            Gamxyz * gxzx + Gamyyz * gxzy + Gamzyz * gxzz  + &
-            Gamxyz * gxxz + Gamyyz * gxyz + Gamzyz * gxzz  + &
-            Gamxzz * gxxy + Gamyzz * gxyy + Gamzzz * gxzy  + &
-            Gamxxy * gzzx + Gamyxy * gzzy + Gamzxy * gzzz )+ &
-   gupyy *(                                                  &
-            Gamxyy * gxyz + Gamyyy * gyyz + Gamzyy * gyzz  + &
-            Gamxyz * gxyy + Gamyyz * gyyy + Gamzyz * gyzy  + &
-            Gamxyy * gyzx + Gamyyy * gyzy + Gamzyy * gyzz )+ &
-   gupyz *(                                                  &
-            Gamxyy * gxzz + Gamyyy * gyzz + Gamzyy * gzzz  + &
-            Gamxyz * gxzy + Gamyyz * gyzy + Gamzyz * gzzy  + &
-            Gamxyz * gyzx + Gamyyz * gyzy + Gamzyz * gyzz  + &
-            Gamxyz * gxyz + Gamyyz * gyyz + Gamzyz * gyzz  + &
-            Gamxzz * gxyy + Gamyzz * gyyy + Gamzzz * gyzy  + &
-            Gamxyy * gzzx + Gamyyy * gzzy + Gamzyy * gzzz )+ &
-   gupzz *(                                                  &
-            Gamxyz * gxzz + Gamyyz * gyzz + Gamzyz * gzzz  + &
-            Gamxzz * gxzy + Gamyzz * gyzy + Gamzzz * gzzy  + &
-            Gamxyz * gzzx + Gamyyz * gzzy + Gamzyz * gzzz )
-!covariant second derivative of chi respect to tilted metric
-  call fdderivs(ex,chi,fxx,fxy,fxz,fyy,fyz,fzz,X,Y,Z,SYM,SYM,SYM,Symmetry,Lev)
-
-  fxx = fxx - Gamxxx * chix - Gamyxx * chiy - Gamzxx * chiz
-  fxy = fxy - Gamxxy * chix - Gamyxy * chiy - Gamzxy * chiz
-  fxz = fxz - Gamxxz * chix - Gamyxz * chiy - Gamzxz * chiz
-  fyy = fyy - Gamxyy * chix - Gamyyy * chiy - Gamzyy * chiz
-  fyz = fyz - Gamxyz * chix - Gamyyz * chiy - Gamzyz * chiz
-  fzz = fzz - Gamxzz * chix - Gamyzz * chiy - Gamzzz * chiz
-! Store D^l D_l chi - 3/(2*chi) D^l chi D_l chi in f
-
-  f =        gupxx * ( fxx - F3o2/chin1 * chix * chix ) + &
-             gupyy * ( fyy - F3o2/chin1 * chiy * chiy ) + &
-             gupzz * ( fzz - F3o2/chin1 * chiz * chiz ) + &
-       TWO * gupxy * ( fxy - F3o2/chin1 * chix * chiy ) + &
-       TWO * gupxz * ( fxz - F3o2/chin1 * chix * chiz ) + &
-       TWO * gupyz * ( fyz - F3o2/chin1 * chiy * chiz ) 
-! Add chi part to Ricci tensor:
-
-  Rxx = Rxx + (fxx - chix*chix/chin1/TWO + gxx * f)/chin1/TWO
-  Ryy = Ryy + (fyy - chiy*chiy/chin1/TWO + gyy * f)/chin1/TWO
-  Rzz = Rzz + (fzz - chiz*chiz/chin1/TWO + gzz * f)/chin1/TWO
-  Rxy = Rxy + (fxy - chix*chiy/chin1/TWO + gxy * f)/chin1/TWO
-  Rxz = Rxz + (fxz - chix*chiz/chin1/TWO + gxz * f)/chin1/TWO
-  Ryz = Ryz + (fyz - chiy*chiz/chin1/TWO + gyz * f)/chin1/TWO
-
-! covariant second derivatives of the lapse respect to physical metric
-  call fdderivs(ex,Lap,fxx,fxy,fxz,fyy,fyz,fzz,X,Y,Z, &
-                SYM,SYM,SYM,symmetry,Lev)
-
-  gxxx = (gupxx * chix + gupxy * chiy + gupxz * chiz)/chin1
-  gxxy = (gupxy * chix + gupyy * chiy + gupyz * chiz)/chin1
-  gxxz = (gupxz * chix + gupyz * chiy + gupzz * chiz)/chin1
-! now get physical second kind of connection
-  Gamxxx = Gamxxx - ( (chix + chix)/chin1 - gxx * gxxx )*HALF
-  Gamyxx = Gamyxx - (                     - gxx * gxxy )*HALF
-  Gamzxx = Gamzxx - (                     - gxx * gxxz )*HALF
-  Gamxyy = Gamxyy - (                     - gyy * gxxx )*HALF
-  Gamyyy = Gamyyy - ( (chiy + chiy)/chin1 - gyy * gxxy )*HALF
-  Gamzyy = Gamzyy - (                     - gyy * gxxz )*HALF
-  Gamxzz = Gamxzz - (                     - gzz * gxxx )*HALF
-  Gamyzz = Gamyzz - (                     - gzz * gxxy )*HALF
-  Gamzzz = Gamzzz - ( (chiz + chiz)/chin1 - gzz * gxxz )*HALF
-  Gamxxy = Gamxxy - (  chiy        /chin1 - gxy * gxxx )*HALF
-  Gamyxy = Gamyxy - (         chix /chin1 - gxy * gxxy )*HALF
-  Gamzxy = Gamzxy - (                     - gxy * gxxz )*HALF
-  Gamxxz = Gamxxz - (  chiz        /chin1 - gxz * gxxx )*HALF
-  Gamyxz = Gamyxz - (                     - gxz * gxxy )*HALF
-  Gamzxz = Gamzxz - (         chix /chin1 - gxz * gxxz )*HALF
-  Gamxyz = Gamxyz - (                     - gyz * gxxx )*HALF
-  Gamyyz = Gamyyz - (  chiz        /chin1 - gyz * gxxy )*HALF
-  Gamzyz = Gamzyz - (         chiy /chin1 - gyz * gxxz )*HALF
-
-  fxx = fxx - Gamxxx*Lapx - Gamyxx*Lapy - Gamzxx*Lapz
-  fyy = fyy - Gamxyy*Lapx - Gamyyy*Lapy - Gamzyy*Lapz
-  fzz = fzz - Gamxzz*Lapx - Gamyzz*Lapy - Gamzzz*Lapz
-  fxy = fxy - Gamxxy*Lapx - Gamyxy*Lapy - Gamzxy*Lapz
-  fxz = fxz - Gamxxz*Lapx - Gamyxz*Lapy - Gamzxz*Lapz
-  fyz = fyz - Gamxyz*Lapx - Gamyyz*Lapy - Gamzyz*Lapz
-
-! store D^i D_i Lap in trK_rhs upto chi
-  trK_rhs =    gupxx * fxx + gupyy * fyy + gupzz * fzz + &
-        TWO* ( gupxy * fxy + gupxz * fxz + gupyz * fyz )
-#if 1        
-!! follow bam code
-  S =  chin1 * ( gupxx * Sxx + gupyy * Syy + gupzz * Szz + &
-     TWO * ( gupxy * Sxy + gupxz * Sxz + gupyz * Syz ) )
-  f = F2o3 * trK * trK -(&
-       gupxx * ( &
-       gupxx * Axx * Axx + gupyy * Axy * Axy + gupzz * Axz * Axz + &
-       TWO * (gupxy * Axx * Axy + gupxz * Axx * Axz + gupyz * Axy * Axz) ) + &
-       gupyy * ( &
-       gupxx * Axy * Axy + gupyy * Ayy * Ayy + gupzz * Ayz * Ayz + &
-       TWO * (gupxy * Axy * Ayy + gupxz * Axy * Ayz + gupyz * Ayy * Ayz) ) + &
-       gupzz * ( &
-       gupxx * Axz * Axz + gupyy * Ayz * Ayz + gupzz * Azz * Azz + &
-       TWO * (gupxy * Axz * Ayz + gupxz * Axz * Azz + gupyz * Ayz * Azz) ) + &
-       TWO * ( &
-       gupxy * ( &
-       gupxx * Axx * Axy + gupyy * Axy * Ayy + gupzz * Axz * Ayz + &
-       gupxy * (Axx * Ayy + Axy * Axy) + &
-       gupxz * (Axx * Ayz + Axz * Axy) + &
-       gupyz * (Axy * Ayz + Axz * Ayy) ) + &
-       gupxz * ( &
-       gupxx * Axx * Axz + gupyy * Axy * Ayz + gupzz * Axz * Azz + &
-       gupxy * (Axx * Ayz + Axy * Axz) + &
-       gupxz * (Axx * Azz + Axz * Axz) + &
-       gupyz * (Axy * Azz + Axz * Ayz) ) + &
-       gupyz * ( &
-       gupxx * Axy * Axz + gupyy * Ayy * Ayz + gupzz * Ayz * Azz + &
-       gupxy * (Axy * Ayz + Ayy * Axz) + &
-       gupxz * (Axy * Azz + Ayz * Axz) + &
-       gupyz * (Ayy * Azz + Ayz * Ayz) ) )) -1.6d1*PI*rho + EIGHT * PI * S
-  f = - F1o3 *(  gupxx * fxx + gupyy * fyy + gupzz * fzz + &
-        TWO* ( gupxy * fxy + gupxz * fxz + gupyz * fyz ) + alpn1/chin1*f)
-  
-  fxx = alpn1 * (Rxx - EIGHT * PI * Sxx) - fxx
-  fxy = alpn1 * (Rxy - EIGHT * PI * Sxy) - fxy
-  fxz = alpn1 * (Rxz - EIGHT * PI * Sxz) - fxz
-  fyy = alpn1 * (Ryy - EIGHT * PI * Syy) - fyy
-  fyz = alpn1 * (Ryz - EIGHT * PI * Syz) - fyz
-  fzz = alpn1 * (Rzz - EIGHT * PI * Szz) - fzz
-#else        
-! Add lapse and S_ij parts to Ricci tensor:
-
-  fxx = alpn1 * (Rxx - EIGHT * PI * Sxx) - fxx
-  fxy = alpn1 * (Rxy - EIGHT * PI * Sxy) - fxy
-  fxz = alpn1 * (Rxz - EIGHT * PI * Sxz) - fxz
-  fyy = alpn1 * (Ryy - EIGHT * PI * Syy) - fyy
-  fyz = alpn1 * (Ryz - EIGHT * PI * Syz) - fyz
-  fzz = alpn1 * (Rzz - EIGHT * PI * Szz) - fzz
-
-! Compute trace-free part (note: chi^-1 and chi cancel!):
-
-  f = F1o3 *(  gupxx * fxx + gupyy * fyy + gupzz * fzz + &
-        TWO* ( gupxy * fxy + gupxz * fxz + gupyz * fyz ) )
-#endif
-
-  Axx_rhs = fxx - gxx * f
-  Ayy_rhs = fyy - gyy * f
-  Azz_rhs = fzz - gzz * f
-  Axy_rhs = fxy - gxy * f
-  Axz_rhs = fxz - gxz * f
-  Ayz_rhs = fyz - gyz * f
-
-! Now: store A_il A^l_j into fij:
-
-  fxx =       gupxx * Axx * Axx + gupyy * Axy * Axy + gupzz * Axz * Axz + &
-       TWO * (gupxy * Axx * Axy + gupxz * Axx * Axz + gupyz * Axy * Axz)
-  fyy =       gupxx * Axy * Axy + gupyy * Ayy * Ayy + gupzz * Ayz * Ayz + &
-       TWO * (gupxy * Axy * Ayy + gupxz * Axy * Ayz + gupyz * Ayy * Ayz)
-  fzz =       gupxx * Axz * Axz + gupyy * Ayz * Ayz + gupzz * Azz * Azz + &
-       TWO * (gupxy * Axz * Ayz + gupxz * Axz * Azz + gupyz * Ayz * Azz)
-  fxy =       gupxx * Axx * Axy + gupyy * Axy * Ayy + gupzz * Axz * Ayz + &
-              gupxy *(Axx * Ayy + Axy * Axy)                            + &
-              gupxz *(Axx * Ayz + Axz * Axy)                            + &
-              gupyz *(Axy * Ayz + Axz * Ayy)
-  fxz =       gupxx * Axx * Axz + gupyy * Axy * Ayz + gupzz * Axz * Azz + &
-              gupxy *(Axx * Ayz + Axy * Axz)                            + &
-              gupxz *(Axx * Azz + Axz * Axz)                            + &
-              gupyz *(Axy * Azz + Axz * Ayz)
-  fyz =       gupxx * Axy * Axz + gupyy * Ayy * Ayz + gupzz * Ayz * Azz + &
-              gupxy *(Axy * Ayz + Ayy * Axz)                            + &
-              gupxz *(Axy * Azz + Ayz * Axz)                            + &
-              gupyz *(Ayy * Azz + Ayz * Ayz)
-
-  f = chin1
-! store D^i D_i Lap in trK_rhs
-  trK_rhs = f*trK_rhs
+        L_Rzz = - HALF * L_Rzzt + &
+                L_gxz * Gamxz(i,j,k) + L_gyz * Gamyz(i,j,k) + L_gzz * Gamzz(i,j,k) + &
+                L_Gamxa * L_gxzz + L_Gamya * L_gyzz + L_Gamza * L_gzzz + &
+                L_gupxx * ( &
+                  TWO * (Gamxxz(i,j,k) * L_gxxz + Gamyxz(i,j,k) * L_gxyz + Gamzxz(i,j,k) * L_gxzz) + &
+                  Gamxxz(i,j,k) * L_gxzx + Gamyxz(i,j,k) * L_gxzy + Gamzxz(i,j,k) * L_gxzz) + &
+                L_gupyy * ( &
+                  TWO * (Gamxyz(i,j,k) * L_gxyz + Gamyyz(i,j,k) * L_gyyz + Gamzyz(i,j,k) * L_gyzz) + &
+                  Gamxyz(i,j,k) * L_gyzx + Gamyyz(i,j,k) * L_gyzy + Gamzyz(i,j,k) * L_gyzz) + &
+                L_gupzz * ( &
+                  TWO * (Gamxzz(i,j,k) * L_gxzz + Gamyzz(i,j,k) * L_gyzz + Gamzzz(i,j,k) * L_gzzz) + &
+                  Gamxzz(i,j,k) * L_gzzx + Gamyzz(i,j,k) * L_gzzy + Gamzzz(i,j,k) * L_gzzz) + &
+                L_gupxy * ( &
+                  TWO * (Gamxxz(i,j,k) * L_gxyz + Gamyxz(i,j,k) * L_gyyz + Gamzxz(i,j,k) * L_gyzz + &
+                        Gamxyz(i,j,k) * L_gxxz + Gamyyz(i,j,k) * L_gxyz + Gamzyz(i,j,k) * L_gxzz) + &
+                  Gamxyz(i,j,k) * L_gxzx + Gamyyz(i,j,k) * L_gxzy + Gamzyz(i,j,k) * L_gxzz + &
+                  Gamxxz(i,j,k) * L_gyzx + Gamyxz(i,j,k) * L_gyzy + Gamzxz(i,j,k) * L_gyzz) + &
+                L_gupxz * ( &
+                  TWO * (Gamxxz(i,j,k) * L_gxzz + Gamyxz(i,j,k) * L_gyzz + Gamzxz(i,j,k) * L_gzzz + &
+                        Gamxzz(i,j,k) * L_gxxz + Gamyzz(i,j,k) * L_gxyz + Gamzzz(i,j,k) * L_gxzz) + &
+                  Gamxzz(i,j,k) * L_gxzx + Gamyzz(i,j,k) * L_gxzy + Gamzzz(i,j,k) * L_gxzz + &
+                  Gamxxz(i,j,k) * L_gzzx + Gamyxz(i,j,k) * L_gzzy + Gamzxz(i,j,k) * L_gzzz) + &
+                L_gupyz * ( &
+                  TWO * (Gamxyz(i,j,k) * L_gxzz + Gamyyz(i,j,k) * L_gyzz + Gamzyz(i,j,k) * L_gzzz + &
+                        Gamxzz(i,j,k) * L_gxyz + Gamyzz(i,j,k) * L_gyyz + Gamzzz(i,j,k) * L_gyzz) + &
+                  Gamxzz(i,j,k) * L_gyzx + Gamyzz(i,j,k) * L_gyzy + Gamzzz(i,j,k) * L_gyzz + &
+                  Gamxyz(i,j,k) * L_gzzx + Gamyyz(i,j,k) * L_gzzy + Gamzyz(i,j,k) * L_gzzz)
+        
+        L_Rxy = HALF * ( - L_Rxyt + &
+                L_gxx * Gamxy(i,j,k) + L_gxy * Gamyy(i,j,k) + L_gxz * Gamzy(i,j,k) + &
+                L_gxy * Gamxx(i,j,k) + L_gyy * Gamyx(i,j,k) + L_gyz * Gamzx(i,j,k) + &
+                L_Gamxa * L_gxyx + L_Gamya * L_gyyx + L_Gamza * L_gyzx + &
+                L_Gamxa * L_gxxy + L_Gamya * L_gxyy + L_Gamza * L_gxzy ) + &
+           L_gupxx * ( &
+                Gamxxx(i,j,k) * L_gxxy + Gamyxx(i,j,k) * L_gxyy + Gamzxx(i,j,k) * L_gxzy + &
+                Gamxxy(i,j,k) * L_gxxx + Gamyxy(i,j,k) * L_gxyx + Gamzxy(i,j,k) * L_gxzx + &
+                Gamxxx(i,j,k) * L_gxyx + Gamyxx(i,j,k) * L_gxyy + Gamzxx(i,j,k) * L_gxyz ) + &
+           L_gupxy * ( &
+                Gamxxx(i,j,k) * L_gxyy + Gamyxx(i,j,k) * L_gyyy + Gamzxx(i,j,k) * L_gyzy + &
+                Gamxxy(i,j,k) * L_gxyx + Gamyxy(i,j,k) * L_gyyx + Gamzxy(i,j,k) * L_gyzx + &
+                Gamxxy(i,j,k) * L_gxyx + Gamyxy(i,j,k) * L_gxyy + Gamzxy(i,j,k) * L_gxyz + &
+                Gamxxy(i,j,k) * L_gxxy + Gamyxy(i,j,k) * L_gxyy + Gamzxy(i,j,k) * L_gxzy + &
+                Gamxyy(i,j,k) * L_gxxx + Gamyyy(i,j,k) * L_gxyx + Gamzyy(i,j,k) * L_gxzx + &
+                Gamxxx(i,j,k) * L_gyyx + Gamyxx(i,j,k) * L_gyyy + Gamzxx(i,j,k) * L_gyyz ) + &
+           L_gupxz * ( &
+                Gamxxx(i,j,k) * L_gxzy + Gamyxx(i,j,k) * L_gyzy + Gamzxx(i,j,k) * L_gzzy + &
+                Gamxxy(i,j,k) * L_gxzx + Gamyxy(i,j,k) * L_gyzx + Gamzxy(i,j,k) * L_gzzx + &
+                Gamxxz(i,j,k) * L_gxyx + Gamyxz(i,j,k) * L_gxyy + Gamzxz(i,j,k) * L_gxyz + &
+                Gamxxz(i,j,k) * L_gxxy + Gamyxz(i,j,k) * L_gxyy + Gamzxz(i,j,k) * L_gxzy + &
+                Gamxyz(i,j,k) * L_gxxx + Gamyyz(i,j,k) * L_gxyx + Gamzyz(i,j,k) * L_gxzx + &
+                Gamxxx(i,j,k) * L_gyzx + Gamyxx(i,j,k) * L_gyzy + Gamzxx(i,j,k) * L_gyzz ) + &
+           L_gupyy * ( &
+                Gamxxy(i,j,k) * L_gxyy + Gamyxy(i,j,k) * L_gyyy + Gamzxy(i,j,k) * L_gyzy + &
+                Gamxyy(i,j,k) * L_gxyx + Gamyyy(i,j,k) * L_gyyx + Gamzyy(i,j,k) * L_gyzx + &
+                Gamxxy(i,j,k) * L_gyyx + Gamyxy(i,j,k) * L_gyyy + Gamzxy(i,j,k) * L_gyyz ) + &
+           L_gupyz * ( &
+                Gamxxy(i,j,k) * L_gxzy + Gamyxy(i,j,k) * L_gyzy + Gamzxy(i,j,k) * L_gzzy + &
+                Gamxyy(i,j,k) * L_gxzx + Gamyyy(i,j,k) * L_gyzx + Gamzyy(i,j,k) * L_gzzx + &
+                Gamxxz(i,j,k) * L_gyyx + Gamyxz(i,j,k) * L_gyyy + Gamzxz(i,j,k) * L_gyyz + &
+                Gamxxz(i,j,k) * L_gxyy + Gamyxz(i,j,k) * L_gyyy + Gamzxz(i,j,k) * L_gyzy + &
+                Gamxyz(i,j,k) * L_gxyx + Gamyyz(i,j,k) * L_gyyx + Gamzyz(i,j,k) * L_gyzx + &
+                Gamxxy(i,j,k) * L_gyzx + Gamyxy(i,j,k) * L_gyzy + Gamzxy(i,j,k) * L_gyzz ) + &
+           L_gupzz * ( &
+                Gamxxz(i,j,k) * L_gxzy + Gamyxz(i,j,k) * L_gyzy + Gamzxz(i,j,k) * L_gzzy + &
+                Gamxyz(i,j,k) * L_gxzx + Gamyyz(i,j,k) * L_gyzx + Gamzyz(i,j,k) * L_gzzx + &
+                Gamxxz(i,j,k) * L_gyzx + Gamyxz(i,j,k) * L_gyzy + Gamzxz(i,j,k) * L_gyzz )
           
-  Axx_rhs =           f * Axx_rhs+ alpn1 * (trK * Axx - TWO * fxx)  + &
-           TWO * (  Axx * betaxx +   Axy * betayx +   Axz * betazx )- &
-             F2o3 * Axx * div_beta
+        L_Rxz = HALF * ( - L_Rxzt + &
+                L_gxx * Gamxz(i,j,k) + L_gxy * Gamyz(i,j,k) + L_gxz * Gamzz(i,j,k) + &
+                L_gxz * Gamxx(i,j,k) + L_gyz * Gamyx(i,j,k) + L_gzz * Gamzx(i,j,k) + &
+                L_Gamxa * L_gxzx + L_Gamya * L_gyzx + L_Gamza * L_gzzx + &
+                L_Gamxa * L_gxxz + L_Gamya * L_gxyz + L_Gamza * L_gxzz ) + &
+           L_gupxx * ( &
+                Gamxxx(i,j,k) * L_gxxz + Gamyxx(i,j,k) * L_gxyz + Gamzxx(i,j,k) * L_gxzz + &
+                Gamxxz(i,j,k) * L_gxxx + Gamyxz(i,j,k) * L_gxyx + Gamzxz(i,j,k) * L_gxzx + &
+                Gamxxx(i,j,k) * L_gxzx + Gamyxx(i,j,k) * L_gxzy + Gamzxx(i,j,k) * L_gxzz ) + &
+           L_gupxy * ( &
+                Gamxxx(i,j,k) * L_gxyz + Gamyxx(i,j,k) * L_gyyz + Gamzxx(i,j,k) * L_gyzz + &
+                Gamxxz(i,j,k) * L_gxyx + Gamyxz(i,j,k) * L_gyyx + Gamzxz(i,j,k) * L_gyzx + &
+                Gamxxy(i,j,k) * L_gxzx + Gamyxy(i,j,k) * L_gxzy + Gamzxy(i,j,k) * L_gxzz + &
+                Gamxxy(i,j,k) * L_gxxz + Gamyxy(i,j,k) * L_gxyz + Gamzxy(i,j,k) * L_gxzz + &
+                Gamxyz(i,j,k) * L_gxxx + Gamyyz(i,j,k) * L_gxyx + Gamzyz(i,j,k) * L_gxzx + &
+                Gamxxx(i,j,k) * L_gyzx + Gamyxx(i,j,k) * L_gyzy + Gamzxx(i,j,k) * L_gyzz ) + &
+           L_gupxz * ( &
+                Gamxxx(i,j,k) * L_gxzz + Gamyxx(i,j,k) * L_gyzz + Gamzxx(i,j,k) * L_gzzz + &
+                Gamxxz(i,j,k) * L_gxzx + Gamyxz(i,j,k) * L_gyzx + Gamzxz(i,j,k) * L_gzzx + &
+                Gamxxz(i,j,k) * L_gxzx + Gamyxz(i,j,k) * L_gxzy + Gamzxz(i,j,k) * L_gxzz + &
+                Gamxxz(i,j,k) * L_gxxz + Gamyxz(i,j,k) * L_gxyz + Gamzxz(i,j,k) * L_gxzz + &
+                Gamxzz(i,j,k) * L_gxxx + Gamyzz(i,j,k) * L_gxyx + Gamzzz(i,j,k) * L_gxzx + &
+                Gamxxx(i,j,k) * L_gzzx + Gamyxx(i,j,k) * L_gzzy + Gamzxx(i,j,k) * L_gzzz ) + &
+           L_gupyy * ( &
+                Gamxxy(i,j,k) * L_gxyz + Gamyxy(i,j,k) * L_gyyz + Gamzxy(i,j,k) * L_gyzz + &
+                Gamxyz(i,j,k) * L_gxyx + Gamyyz(i,j,k) * L_gyyx + Gamzyz(i,j,k) * L_gyzx + &
+                Gamxxy(i,j,k) * L_gyzx + Gamyxy(i,j,k) * L_gyzy + Gamzxy(i,j,k) * L_gyzz ) + &
+           L_gupyz * ( &
+                Gamxxy(i,j,k) * L_gxzz + Gamyxy(i,j,k) * L_gyzz + Gamzxy(i,j,k) * L_gzzz + &
+                Gamxyz(i,j,k) * L_gxzx + Gamyyz(i,j,k) * L_gyzx + Gamzyz(i,j,k) * L_gzzx + &
+                Gamxxz(i,j,k) * L_gyzx + Gamyxz(i,j,k) * L_gyzy + Gamzxz(i,j,k) * L_gyzz + &
+                Gamxxz(i,j,k) * L_gxyz + Gamyxz(i,j,k) * L_gyyz + Gamzxz(i,j,k) * L_gyzz + &
+                Gamxzz(i,j,k) * L_gxyx + Gamyzz(i,j,k) * L_gyyx + Gamzzz(i,j,k) * L_gyzx + &
+                Gamxxy(i,j,k) * L_gzzx + Gamyxy(i,j,k) * L_gzzy + Gamzxy(i,j,k) * L_gzzz ) + &
+           L_gupzz * ( &
+                Gamxxz(i,j,k) * L_gxzz + Gamyxz(i,j,k) * L_gyzz + Gamzxz(i,j,k) * L_gzzz + &
+                Gamxzz(i,j,k) * L_gxzx + Gamyzz(i,j,k) * L_gyzx + Gamzzz(i,j,k) * L_gzzx + &
+                Gamxxz(i,j,k) * L_gzzx + Gamyxz(i,j,k) * L_gzzy + Gamzxz(i,j,k) * L_gzzz )
+        
+        L_Ryz = HALF * ( - L_Ryzt + &
+                L_gxy * Gamxz(i,j,k) + L_gyy * Gamyz(i,j,k) + L_gyz * Gamzz(i,j,k) + &
+                L_gxz * Gamxy(i,j,k) + L_gyz * Gamyy(i,j,k) + L_gzz * Gamzy(i,j,k) + &
+                L_Gamxa * L_gxzy + L_Gamya * L_gyzy + L_Gamza * L_gzzy + &
+                L_Gamxa * L_gxyz + L_Gamya * L_gyyz + L_Gamza * L_gyzz ) + &
+           L_gupxx * ( &
+                Gamxxy(i,j,k) * L_gxxz + Gamyxy(i,j,k) * L_gxyz + Gamzxy(i,j,k) * L_gxzz + &
+                Gamxxz(i,j,k) * L_gxxy + Gamyxz(i,j,k) * L_gxyy + Gamzxz(i,j,k) * L_gxzy + &
+                Gamxxy(i,j,k) * L_gxzx + Gamyxy(i,j,k) * L_gxzy + Gamzxy(i,j,k) * L_gxzz ) + &
+           L_gupxy * ( &
+                Gamxxy(i,j,k) * L_gxyz + Gamyxy(i,j,k) * L_gyyz + Gamzxy(i,j,k) * L_gyzz + &
+                Gamxxz(i,j,k) * L_gxyy + Gamyxz(i,j,k) * L_gyyy + Gamzxz(i,j,k) * L_gyzy + &
+                Gamxyy(i,j,k) * L_gxzx + Gamyyy(i,j,k) * L_gxzy + Gamzyy(i,j,k) * L_gxzz + &
+                Gamxyy(i,j,k) * L_gxxz + Gamyyy(i,j,k) * L_gxyz + Gamzyy(i,j,k) * L_gxzz + &
+                Gamxyz(i,j,k) * L_gxxy + Gamyyz(i,j,k) * L_gxyy + Gamzyz(i,j,k) * L_gxzy + &
+                Gamxxy(i,j,k) * L_gyzx + Gamyxy(i,j,k) * L_gyzy + Gamzxy(i,j,k) * L_gyzz ) + &
+           L_gupxz * ( &
+                Gamxxy(i,j,k) * L_gxzz + Gamyxy(i,j,k) * L_gyzz + Gamzxy(i,j,k) * L_gzzz + &
+                Gamxxz(i,j,k) * L_gxzy + Gamyxz(i,j,k) * L_gyzy + Gamzxz(i,j,k) * L_gzzy + &
+                Gamxyz(i,j,k) * L_gxzx + Gamyyz(i,j,k) * L_gxzy + Gamzyz(i,j,k) * L_gxzz + &
+                Gamxyz(i,j,k) * L_gxxz + Gamyyz(i,j,k) * L_gxyz + Gamzyz(i,j,k) * L_gxzz + &
+                Gamxzz(i,j,k) * L_gxxy + Gamyzz(i,j,k) * L_gxyy + Gamzzz(i,j,k) * L_gxzy + &
+                Gamxxy(i,j,k) * L_gzzx + Gamyxy(i,j,k) * L_gzzy + Gamzxy(i,j,k) * L_gzzz ) + &
+           L_gupyy * ( &
+                Gamxyy(i,j,k) * L_gxyz + Gamyyy(i,j,k) * L_gyyz + Gamzyy(i,j,k) * L_gyzz + &
+                Gamxyz(i,j,k) * L_gxyy + Gamyyz(i,j,k) * L_gyyy + Gamzyz(i,j,k) * L_gyzy + &
+                Gamxyy(i,j,k) * L_gyzx + Gamyyy(i,j,k) * L_gyzy + Gamzyy(i,j,k) * L_gyzz ) + &
+           L_gupyz * ( &
+                Gamxyy(i,j,k) * L_gxzz + Gamyyy(i,j,k) * L_gyzz + Gamzyy(i,j,k) * L_gzzz + &
+                Gamxyz(i,j,k) * L_gxzy + Gamyyz(i,j,k) * L_gyzy + Gamzyz(i,j,k) * L_gzzy + &
+                Gamxyz(i,j,k) * L_gyzx + Gamyyz(i,j,k) * L_gyzy + Gamzyz(i,j,k) * L_gyzz + &
+                Gamxyz(i,j,k) * L_gxyz + Gamyyz(i,j,k) * L_gyyz + Gamzyz(i,j,k) * L_gyzz + &
+                Gamxzz(i,j,k) * L_gxyy + Gamyzz(i,j,k) * L_gyyy + Gamzzz(i,j,k) * L_gyzy + &
+                Gamxyy(i,j,k) * L_gzzx + Gamyyy(i,j,k) * L_gzzy + Gamzyy(i,j,k) * L_gzzz ) + &
+           L_gupzz * ( &
+                Gamxyz(i,j,k) * L_gxzz + Gamyyz(i,j,k) * L_gyzz + Gamzyz(i,j,k) * L_gzzz + &
+                Gamxzz(i,j,k) * L_gxzy + Gamyzz(i,j,k) * L_gyzy + Gamzzz(i,j,k) * L_gzzy + &
+                Gamxyz(i,j,k) * L_gzzx + Gamyyz(i,j,k) * L_gzzy + Gamzyz(i,j,k) * L_gzzz )
+            
+        L_chix = chix(i,j,k); L_chiy = chiy(i,j,k); L_chiz = chiz(i,j,k)
+        L_Dxx_chi = chixx(i,j,k) - Gamxxx(i,j,k) * L_chix - Gamyxx(i,j,k) * L_chiy - Gamzxx(i,j,k) * L_chiz
+        L_Dxy_chi = chixy(i,j,k) - Gamxxy(i,j,k) * L_chix - Gamyxy(i,j,k) * L_chiy - Gamzxy(i,j,k) * L_chiz
+        L_Dxz_chi = chixz(i,j,k) - Gamxxz(i,j,k) * L_chix - Gamyxz(i,j,k) * L_chiy - Gamzxz(i,j,k) * L_chiz
+        L_Dyy_chi = chiyy(i,j,k) - Gamxyy(i,j,k) * L_chix - Gamyyy(i,j,k) * L_chiy - Gamzyy(i,j,k) * L_chiz
+        L_Dyz_chi = chiyz(i,j,k) - Gamxyz(i,j,k) * L_chix - Gamyyz(i,j,k) * L_chiy - Gamzyz(i,j,k) * L_chiz
+        L_Dzz_chi = chizz(i,j,k) - Gamxzz(i,j,k) * L_chix - Gamyzz(i,j,k) * L_chiy - Gamzzz(i,j,k) * L_chiz
 
-  Ayy_rhs =           f * Ayy_rhs+ alpn1 * (trK * Ayy - TWO * fyy)  + &
-           TWO * (  Axy * betaxy +   Ayy * betayy +   Ayz * betazy )- &
-             F2o3 * Ayy * div_beta
+        L_f = L_gupxx * (L_Dxx_chi - F3o2/L_chin1 * L_chix * L_chix) + &
+              L_gupyy * (L_Dyy_chi - F3o2/L_chin1 * L_chiy * L_chiy) + &
+              L_gupzz * (L_Dzz_chi - F3o2/L_chin1 * L_chiz * L_chiz) + &
+              TWO * L_gupxy * (L_Dxy_chi - F3o2/L_chin1 * L_chix * L_chiy) + &
+              TWO * L_gupxz * (L_Dxz_chi - F3o2/L_chin1 * L_chix * L_chiz) + &
+              TWO * L_gupyz * (L_Dyz_chi - F3o2/L_chin1 * L_chiy * L_chiz)
 
-  Azz_rhs =           f * Azz_rhs+ alpn1 * (trK * Azz - TWO * fzz)  + &
-           TWO * (  Axz * betaxz +   Ayz * betayz +   Azz * betazz )- &
-             F2o3 * Azz * div_beta
+        Rxx(i,j,k) = L_Rxx + (L_Dxx_chi - L_chix*L_chix/L_chin1/TWO + L_gxx * L_f)/L_chin1/TWO
+        Ryy(i,j,k) = L_Ryy + (L_Dyy_chi - L_chiy*L_chiy/L_chin1/TWO + L_gyy * L_f)/L_chin1/TWO
+        Rzz(i,j,k) = L_Rzz + (L_Dzz_chi - L_chiz*L_chiz/L_chin1/TWO + L_gzz * L_f)/L_chin1/TWO
+        Rxy(i,j,k) = L_Rxy + (L_Dxy_chi - L_chix*L_chiy/L_chin1/TWO + L_gxy * L_f)/L_chin1/TWO
+        Rxz(i,j,k) = L_Rxz + (L_Dxz_chi - L_chix*L_chiz/L_chin1/TWO + L_gxz * L_f)/L_chin1/TWO
+        Ryz(i,j,k) = L_Ryz + (L_Dyz_chi - L_chiy*L_chiz/L_chin1/TWO + L_gyz * L_f)/L_chin1/TWO
 
-  Axy_rhs =           f * Axy_rhs+ alpn1 *( trK * Axy  - TWO * fxy )+ &
-                    Axx * betaxy                  +   Axz * betazy  + &
-                                     Ayy * betayx +   Ayz * betazx  + &
-             F1o3 * Axy * div_beta                -   Axy * betazz
+        L_gxxx_p = (L_gupxx * L_chix + L_gupxy * L_chiy + L_gupxz * L_chiz) / L_chin1
+        L_gxxy_p = (L_gupxy * L_chix + L_gupyy * L_chiy + L_gupyz * L_chiz) / L_chin1
+        L_gxxz_p = (L_gupxz * L_chix + L_gupyz * L_chiy + L_gupzz * L_chiz) / L_chin1
 
-  Ayz_rhs =           f * Ayz_rhs+ alpn1 *( trK * Ayz  - TWO * fyz )+ &
-                    Axy * betaxz +   Ayy * betayz                   + &
-                    Axz * betaxy                  +   Azz * betazy  + &
-             F1o3 * Ayz * div_beta                -   Ayz * betaxx
- 
-  Axz_rhs =           f * Axz_rhs+ alpn1 *( trK * Axz  - TWO * fxz )+ &
-                    Axx * betaxz +   Axy * betayz                   + &
-                                     Ayz * betayx +   Azz * betazx  + &
-             F1o3 * Axz * div_beta                -   Axz * betayy      !rhs for Aij
+        L_Gamxxx_p = Gamxxx(i,j,k) - ( (L_chix + L_chix)/L_chin1 - L_gxx * L_gxxx_p ) * HALF
+        L_Gamyxx_p = Gamyxx(i,j,k) - (                         - L_gxx * L_gxxy_p ) * HALF
+        L_Gamzxx_p = Gamzxx(i,j,k) - (                         - L_gxx * L_gxxz_p ) * HALF
+        L_Gamxyy_p = Gamxyy(i,j,k) - (                         - L_gyy * L_gxxx_p ) * HALF
+        L_Gamyyy_p = Gamyyy(i,j,k) - ( (L_chiy + L_chiy)/L_chin1 - L_gyy * L_gxxy_p ) * HALF
+        L_Gamzyy_p = Gamzyy(i,j,k) - (                         - L_gyy * L_gxxz_p ) * HALF
+        L_Gamxzz_p = Gamxzz(i,j,k) - (                         - L_gzz * L_gxxx_p ) * HALF
+        L_Gamyzz_p = Gamyzz(i,j,k) - (                         - L_gzz * L_gxxy_p ) * HALF
+        L_Gamzzz_p = Gamzzz(i,j,k) - ( (L_chiz + L_chiz)/L_chin1 - L_gzz * L_gxxz_p ) * HALF
+        L_Gamxxy_p = Gamxxy(i,j,k) - (  L_chiy         /L_chin1 - L_gxy * L_gxxx_p ) * HALF
+        L_Gamyxy_p = Gamyxy(i,j,k) - (  L_chix         /L_chin1 - L_gxy * L_gxxy_p ) * HALF
+        L_Gamzxy_p = Gamzxy(i,j,k) - (                         - L_gxy * L_gxxz_p ) * HALF
+        L_Gamxxz_p = Gamxxz(i,j,k) - (  L_chiz         /L_chin1 - L_gxz * L_gxxx_p ) * HALF
+        L_Gamyxz_p = Gamyxz(i,j,k) - (                         - L_gxz * L_gxxy_p ) * HALF
+        L_Gamzxz_p = Gamzxz(i,j,k) - (  L_chix         /L_chin1 - L_gxz * L_gxxz_p ) * HALF
+        L_Gamxyz_p = Gamxyz(i,j,k) - (                         - L_gyz * L_gxxx_p ) * HALF
+        L_Gamyyz_p = Gamyyz(i,j,k) - (  L_chiz         /L_chin1 - L_gyz * L_gxxy_p ) * HALF
+        L_Gamzyz_p = Gamzyz(i,j,k) - (  L_chiy         /L_chin1 - L_gyz * L_gxxz_p ) * HALF
 
-! Compute trace of S_ij
+        Gamxxx(i,j,k) = L_Gamxxx_p
+        Gamyxx(i,j,k) = L_Gamyxx_p
+        Gamzxx(i,j,k) = L_Gamzxx_p
+        Gamxyy(i,j,k) = L_Gamxyy_p
+        Gamyyy(i,j,k) = L_Gamyyy_p
+        Gamzyy(i,j,k) = L_Gamzyy_p
+        Gamxzz(i,j,k) = L_Gamxzz_p
+        Gamyzz(i,j,k) = L_Gamyzz_p
+        Gamzzz(i,j,k) = L_Gamzzz_p
+        Gamxxy(i,j,k) = L_Gamxxy_p
+        Gamyxy(i,j,k) = L_Gamyxy_p
+        Gamzxy(i,j,k) = L_Gamzxy_p
+        Gamxxz(i,j,k) = L_Gamxxz_p
+        Gamyxz(i,j,k) = L_Gamyxz_p
+        Gamzxz(i,j,k) = L_Gamzxz_p
+        Gamxyz(i,j,k) = L_Gamxyz_p
+        Gamyyz(i,j,k) = L_Gamyyz_p
+        Gamzyz(i,j,k) = L_Gamzyz_p
 
-  S =  f * ( gupxx * Sxx + gupyy * Syy + gupzz * Szz + &
-     TWO * ( gupxy * Sxy + gupxz * Sxz + gupyz * Syz ) )
+        L_lapx = Lapx(i,j,k); L_lapy = Lapy(i,j,k); L_lapz = Lapz(i,j,k)
 
-  trK_rhs = - trK_rhs + alpn1 *( F1o3 * trK * trK         + &
-                gupxx * fxx + gupyy * fyy + gupzz * fzz   + &
-        TWO * ( gupxy * fxy + gupxz * fxz + gupyz * fyz ) + &
-       FOUR * PI * ( rho + S ))                                !rhs for trK
+        L_lapxx = lapxx(i,j,k) - L_Gamxxx_p * L_lapx - L_Gamyxx_p * L_lapy - L_Gamzxx_p * L_lapz
+        L_lapyy = lapyy(i,j,k) - L_Gamxyy_p * L_lapx - L_Gamyyy_p * L_lapy - L_Gamzyy_p * L_lapz
+        L_lapzz = lapzz(i,j,k) - L_Gamxzz_p * L_lapx - L_Gamyzz_p * L_lapy - L_Gamzzz_p * L_lapz
+        L_lapxy = lapxy(i,j,k) - L_Gamxxy_p * L_lapx - L_Gamyxy_p * L_lapy - L_Gamzxy_p * L_lapz
+        L_lapxz = lapxz(i,j,k) - L_Gamxxz_p * L_lapx - L_Gamyxz_p * L_lapy - L_Gamzxz_p * L_lapz
+        L_lapyz = lapyz(i,j,k) - L_Gamxyz_p * L_lapx - L_Gamyyz_p * L_lapy - L_Gamzyz_p * L_lapz
+
+        L_lap_lap = L_gupxx * L_lapxx + L_gupyy * L_lapyy + L_gupzz * L_lapzz + &
+                      TWO* ( L_gupxy * L_lapxy + L_gupxz * L_lapxz + L_gupyz * L_lapyz )
+        
+        L_S = L_chin1 * ( L_gupxx * Sxx(i,j,k) + L_gupyy * Syy(i,j,k) + L_gupzz * Szz(i,j,k) + &
+              TWO * ( L_gupxy * Sxy(i,j,k) + L_gupxz * Sxz(i,j,k) + L_gupyz * Syz(i,j,k) ) )
+
+        L_f_trace = F2o3 * trK(i,j,k) * trK(i,j,k) - ( &
+                  L_gupxx * ( &
+                  L_gupxx * L_Axx * L_Axx + L_gupyy * L_Axy * L_Axy + L_gupzz * L_Axz * L_Axz + &
+                  TWO * (L_gupxy * L_Axx * L_Axy + L_gupxz * L_Axx * L_Axz + L_gupyz * L_Axy * L_Axz) ) + &
+                  L_gupyy * ( &
+                  L_gupxx * L_Axy * L_Axy + L_gupyy * L_Ayy * L_Ayy + L_gupzz * L_Ayz * L_Ayz + &
+                  TWO * (L_gupxy * L_Axy * L_Ayy + L_gupxz * L_Axy * L_Ayz + L_gupyz * L_Ayy * L_Ayz) ) + &
+                  L_gupzz * ( &
+                  L_gupxx * L_Axz * L_Axz + L_gupyy * L_Ayz * L_Ayz + L_gupzz * L_Azz * L_Azz + &
+                  TWO * (L_gupxy * L_Axz * L_Ayz + L_gupxz * L_Axz * L_Azz + L_gupyz * L_Ayz * L_Azz) ) + &
+                  TWO * ( &
+                  L_gupxy * ( &
+                  L_gupxx * L_Axx * L_Axy + L_gupyy * L_Axy * L_Ayy + L_gupzz * L_Axz * L_Ayz + &
+                  L_gupxy * (L_Axx * L_Ayy + L_Axy * L_Axy) + &
+                  L_gupxz * (L_Axx * L_Ayz + L_Axz * L_Axy) + &
+                  L_gupyz * (L_Axy * L_Ayz + L_Axz * L_Ayy) ) + &
+                  L_gupxz * ( &
+                  L_gupxx * L_Axx * L_Axz + L_gupyy * L_Axy * L_Ayz + L_gupzz * L_Axz * L_Azz + &
+                  L_gupxy * (L_Axx * L_Ayz + L_Axy * L_Axz) + &
+                  L_gupxz * (L_Axx * L_Azz + L_Axz * L_Axz) + &
+                  L_gupyz * (L_Axy * L_Azz + L_Axz * L_Ayz) ) + &
+                  L_gupyz * ( &
+                  L_gupxx * L_Axy * L_Axz + L_gupyy * L_Ayy * L_Ayz + L_gupzz * L_Ayz * L_Azz + &
+                  L_gupxy * (L_Axy * L_Ayz + L_Ayy * L_Axz) + &
+                  L_gupxz * (L_Axy * L_Azz + L_Ayz * L_Axz) + &
+                  L_gupyz * (L_Ayy * L_Azz + L_Ayz * L_Ayz) ) )) - 1.6d1 * PI * rho(i,j,k) + EIGHT * PI * L_S
+        
+        L_tf = -F1o3 * ( L_gupxx * L_lapxx + L_gupyy * L_lapyy + L_gupzz * L_lapzz + &
+             TWO*(L_gupxy * L_lapxy + L_gupxz * L_lapxz + L_gupyz * L_lapyz) + L_alpn1 / L_chin1 * L_f_trace )
+
+        L_lapxx = L_alpn1 * (Rxx(i,j,k) - EIGHT * PI * Sxx(i,j,k)) - L_lapxx
+        L_lapxy = L_alpn1 * (Rxy(i,j,k) - EIGHT * PI * Sxy(i,j,k)) - L_lapxy
+        L_lapxz = L_alpn1 * (Rxz(i,j,k) - EIGHT * PI * Sxz(i,j,k)) - L_lapxz
+        L_lapyy = L_alpn1 * (Ryy(i,j,k) - EIGHT * PI * Syy(i,j,k)) - L_lapyy
+        L_lapyz = L_alpn1 * (Ryz(i,j,k) - EIGHT * PI * Syz(i,j,k)) - L_lapyz
+        L_lapzz = L_alpn1 * (Rzz(i,j,k) - EIGHT * PI * Szz(i,j,k)) - L_lapzz
+
+        L_tmp_xx = L_lapxx - L_gxx * L_tf
+        L_tmp_yy = L_lapyy - L_gyy * L_tf
+        L_tmp_zz = L_lapzz - L_gzz * L_tf
+        L_tmp_xy = L_lapxy - L_gxy * L_tf
+        L_tmp_xz = L_lapxz - L_gxz * L_tf
+        L_tmp_yz = L_lapyz - L_gyz * L_tf
+
+        L_lapxx = L_gupxx * L_Axx * L_Axx + L_gupyy * L_Axy * L_Axy + L_gupzz * L_Axz * L_Axz + &
+                TWO * (L_gupxy * L_Axx * L_Axy + L_gupxz * L_Axx * L_Axz + L_gupyz * L_Axy * L_Axz)
+        L_lapyy = L_gupxx * L_Axy * L_Axy + L_gupyy * L_Ayy * L_Ayy + L_gupzz * L_Ayz * L_Ayz + &
+                TWO * (L_gupxy * L_Axy * L_Ayy + L_gupxz * L_Axy * L_Ayz + L_gupyz * L_Ayy * L_Ayz)
+        L_lapzz = L_gupxx * L_Axz * L_Axz + L_gupyy * L_Ayz * L_Ayz + L_gupzz * L_Azz * L_Azz + &
+                TWO * (L_gupxy * L_Axz * L_Ayz + L_gupxz * L_Axz * L_Azz + L_gupyz * L_Ayz * L_Azz)
+        L_lapxy = L_gupxx * L_Axx * L_Axy + L_gupyy * L_Axy * L_Ayy + L_gupzz * L_Axz * L_Ayz + &
+                  L_gupxy *(L_Axx * L_Ayy + L_Axy * L_Axy) + &
+                  L_gupxz *(L_Axx * L_Ayz + L_Axz * L_Axy) + &
+                  L_gupyz *(L_Axy * L_Ayz + L_Axz * L_Ayy)
+        L_lapxz = L_gupxx * L_Axx * L_Axz + L_gupyy * L_Axy * L_Ayz + L_gupzz * L_Axz * L_Azz + &
+                  L_gupxy *(L_Axx * L_Ayz + L_Axy * L_Axz) + &
+                  L_gupxz *(L_Axx * L_Azz + L_Axz * L_Axz) + &
+                  L_gupyz *(L_Axy * L_Azz + L_Axz * L_Ayz)
+        L_lapyz = L_gupxx * L_Axy * L_Axz + L_gupyy * L_Ayy * L_Ayz + L_gupzz * L_Ayz * L_Azz + &
+                  L_gupxy *(L_Axy * L_Ayz + L_Ayy * L_Axz) + &
+                  L_gupxz *(L_Axy * L_Azz + L_Ayz * L_Axz) + &
+                  L_gupyz *(L_Ayy * L_Azz + L_Ayz * L_Ayz)
+
+        Axx_rhs(i,j,k) = L_chin1 * L_tmp_xx+ L_alpn1 * (trK(i,j,k) * L_Axx - TWO * L_lapxx)  + &
+                         TWO * (L_Axx * betaxx(i,j,k) + L_Axy * betayx(i,j,k) + L_Axz * betazx(i,j,k)) - &
+                         F2o3 * L_Axx * L_div_beta
+        Ayy_rhs(i,j,k) = L_chin1 * L_tmp_yy + L_alpn1 * (trK(i,j,k) * L_Ayy - TWO * L_lapyy) + &
+                         TWO * (L_Axy * betaxy(i,j,k) + L_Ayy * betayy(i,j,k) + L_Ayz * betazy(i,j,k)) - &
+                         F2o3 * L_Ayy * L_div_beta
+        Azz_rhs(i,j,k) = L_chin1 * L_tmp_zz + L_alpn1 * (trK(i,j,k) * L_Azz - TWO * L_lapzz) + &
+                         TWO * (L_Axz * betaxz(i,j,k) + L_Ayz * betayz(i,j,k) + L_Azz * betazz(i,j,k)) - &
+                         F2o3 * L_Azz * L_div_beta
+        Axy_rhs(i,j,k) = L_chin1 * L_tmp_xy + L_alpn1 * (trK(i,j,k) * L_Axy - TWO * L_lapxy) + &
+                         L_Axx * betaxy(i,j,k) + L_Axz * betazy(i,j,k) + &
+                         L_Ayy * betayx(i,j,k) + L_Ayz * betazx(i,j,k) + &
+                         F1o3 * L_Axy * L_div_beta - L_Axy * betazz(i,j,k)
+
+        Ayz_rhs(i,j,k) = L_chin1 * L_tmp_yz + L_alpn1 * (trK(i,j,k) * L_Ayz - TWO * L_lapyz) + &
+                         L_Axy * betaxz(i,j,k) + L_Ayy * betayz(i,j,k) + &
+                         L_Axz * betaxy(i,j,k) + L_Azz * betazy(i,j,k) + &
+                         F1o3 * L_Ayz * L_div_beta - L_Ayz * betaxx(i,j,k)
+
+        Axz_rhs(i,j,k) = L_chin1 * L_tmp_xz + L_alpn1 * (trK(i,j,k) * L_Axz - TWO * L_lapxz) + &
+                         L_Axx * betaxz(i,j,k) + L_Axy * betayz(i,j,k) + &
+                         L_Ayz * betayx(i,j,k) + L_Azz * betazx(i,j,k) + &
+                         F1o3 * L_Axz * L_div_beta - L_Axz * betayy(i,j,k)
+
+        L_S = L_chin1 * (L_gupxx * Sxx(i,j,k) + L_gupyy * Syy(i,j,k)+ L_gupzz * Szz(i,j,k) + &
+              TWO * (L_gupxy * Sxy(i,j,k) + L_gupxz * Sxz(i,j,k) + L_gupyz * Syz(i,j,k)))
+
+        trK_rhs(i,j,k) = - L_chin1 * L_lap_lap + L_alpn1 *(F1o3 * trK(i,j,k) * trK(i,j,k) + &
+                        L_gupxx * L_lapxx + L_gupyy * L_lapyy + L_gupzz * L_lapzz + &
+                        TWO * (L_gupxy * L_lapxy + L_gupxz * L_lapxz + L_gupyz * L_lapyz) + &
+                        FOUR * PI * (rho(i,j,k) + L_S))
+      end do
+    end do
+  end do
+  !$OMP END PARALLEL DO
   
 !!!! gauge variable part
 

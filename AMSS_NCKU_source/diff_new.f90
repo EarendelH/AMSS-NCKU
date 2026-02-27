@@ -957,12 +957,13 @@
   real*8 :: dX,dY,dZ
   real*8,dimension(-1:ex(1),-1:ex(2),-1:ex(3))   :: fh
   real*8, dimension(3) :: SoA
-  integer :: imin,jmin,kmin,imax,jmax,kmax,i,j,k
+  integer :: imin,jmin,kmin,imax,jmax,kmax,i,j,k, ii, jj, kk
   real*8 :: d12dx,d12dy,d12dz,d2dx,d2dy,d2dz
   integer, parameter :: NO_SYMM = 0, EQ_SYMM = 1, OCTANT = 2
   real*8,  parameter :: ZEO=0.d0,ONE=1.d0, F60=6.d1
   real*8,  parameter :: TWO=2.d0,EIT=8.d0
   real*8,  parameter ::  F9=9.d0,F45=4.5d1,F12=1.2d1
+  integer, parameter :: TILE_I=32, TILE_J=32, TILE_K=8
 
   dX = X(2)-X(1)
   dY = Y(2)-Y(1)
@@ -985,118 +986,44 @@
 
   call symmetry_bd(2,ex,f,fh,SoA)
 
-  d12dx = ONE/F12/dX
-  d12dy = ONE/F12/dY
-  d12dz = ONE/F12/dZ
+  d12dx = ONE/(F12*dX)
+  d12dy = ONE/(F12*dY)
+  d12dz = ONE/(F12*dZ)
 
-  d2dx = ONE/TWO/dX
-  d2dy = ONE/TWO/dY
-  d2dz = ONE/TWO/dZ
+  d2dx = ONE/(TWO*dX)
+  d2dy = ONE/(TWO*dY)
+  d2dz = ONE/(TWO*dZ)
 
   fx = ZEO
   fy = ZEO
   fz = ZEO
 
-  do k=1,ex(3)-1
-  do j=1,ex(2)-1
-  do i=1,ex(1)-1
-#if 0  
-! x direction   
-        if(i+2 <= imax .and. i-2 >= imin)then
-!
-!              f(i-2) - 8 f(i-1) + 8 f(i+1) - f(i+2)
-!  fx(i) = ---------------------------------------------
-!                             12 dx
-      fx(i,j,k)=d12dx*(fh(i-2,j,k)-EIT*fh(i-1,j,k)+EIT*fh(i+1,j,k)-fh(i+2,j,k))
-
-    elseif(i+1 <= imax .and. i-1 >= imin)then
-!
-!              - f(i-1) + f(i+1)
-!  fx(i) = --------------------------------
-!                     2 dx
-      fx(i,j,k)=d2dx*(-fh(i-1,j,k)+fh(i+1,j,k))
-
-! set imax and imin 0
-    endif
-! y direction   
-        if(j+2 <= jmax .and. j-2 >= jmin)then
-
-      fy(i,j,k)=d12dy*(fh(i,j-2,k)-EIT*fh(i,j-1,k)+EIT*fh(i,j+1,k)-fh(i,j+2,k))
-
-    elseif(j+1 <= jmax .and. j-1 >= jmin)then
-
-     fy(i,j,k)=d2dy*(-fh(i,j-1,k)+fh(i,j+1,k))
-
-! set jmax and jmin 0
-    endif
-! z direction   
-        if(k+2 <= kmax .and. k-2 >= kmin)then
-
-      fz(i,j,k)=d12dz*(fh(i,j,k-2)-EIT*fh(i,j,k-1)+EIT*fh(i,j,k+1)-fh(i,j,k+2))
-
-    elseif(k+1 <= kmax .and. k-1 >= kmin)then
-
-      fz(i,j,k)=d2dz*(-fh(i,j,k-1)+fh(i,j,k+1))
-
-! set kmax and kmin 0
-    endif
-#elif 0
-! x direction   
-        if(i+2 <= imax .and. i-2 >= imin)then
-!
-!              f(i-2) - 8 f(i-1) + 8 f(i+1) - f(i+2)
-!  fx(i) = ---------------------------------------------
-!                             12 dx
-      fx(i,j,k)=d12dx*(fh(i-2,j,k)-EIT*fh(i-1,j,k)+EIT*fh(i+1,j,k)-fh(i+2,j,k))
-
-    elseif(i+3 <= imax .and. i-1 >= imin)then
-      fx(i,j,k)=d12dx*(-3.d0*fh(i-1,j,k)-1.d1*fh(i,j,k)+1.8d1*fh(i+1,j,k)-6.d0*fh(i+2,j,k)+fh(i+3,j,k))
-    elseif(i+1 <= imax .and. i-3 >= imin)then
-      fx(i,j,k)=d12dx*( 3.d0*fh(i+1,j,k)+1.d1*fh(i,j,k)-1.8d1*fh(i-1,j,k)+6.d0*fh(i-2,j,k)-fh(i-3,j,k))
-! set imax and imin 0
-    endif
-! y direction   
-        if(j+2 <= jmax .and. j-2 >= jmin)then
-
-      fy(i,j,k)=d12dy*(fh(i,j-2,k)-EIT*fh(i,j-1,k)+EIT*fh(i,j+1,k)-fh(i,j+2,k))
-
-    elseif(j+3 <= jmax .and. j-1 >= jmin)then
-      fy(i,j,k)=d12dy*(-3.d0*fh(i,j-1,k)-1.d1*fh(i,j,k)+1.8d1*fh(i,j+1,k)-6.d0*fh(i,j+2,k)+fh(i,j+3,k))
-    elseif(j+1 <= jmax .and. j-3 >= jmin)then
-      fy(i,j,k)=d12dy*( 3.d0*fh(i,j+1,k)+1.d1*fh(i,j,k)-1.8d1*fh(i,j-1,k)+6.d0*fh(i,j-2,k)-fh(i,j-3,k))
-
-! set jmax and jmin 0
-    endif
-! z direction   
-        if(k+2 <= kmax .and. k-2 >= kmin)then
-
-      fz(i,j,k)=d12dz*(fh(i,j,k-2)-EIT*fh(i,j,k-1)+EIT*fh(i,j,k+1)-fh(i,j,k+2))
-
-    elseif(k+3 <= kmax .and. k-1 >= kmin)then
-      fz(i,j,k)=d12dz*(-3.d0*fh(i,j,k-1)-1.d1*fh(i,j,k)+1.8d1*fh(i,j,k+1)-6.d0*fh(i,j,k+2)+fh(i,j,k+3))
-    elseif(k+1 <= kmax .and. k-3 >= kmin)then
-      fz(i,j,k)=d12dz*( 3.d0*fh(i,j,k+1)+1.d1*fh(i,j,k)-1.8d1*fh(i,j,k-1)+6.d0*fh(i,j,k-2)-fh(i,j,k-3))
-
-! set kmax and kmin 0
-    endif
-#else
-! for bam comparison
-   if(i+2 <= imax .and. i-2 >= imin .and. &
-      j+2 <= jmax .and. j-2 >= jmin .and. &
-      k+2 <= kmax .and. k-2 >= kmin) then
-      fx(i,j,k)=d12dx*(fh(i-2,j,k)-EIT*fh(i-1,j,k)+EIT*fh(i+1,j,k)-fh(i+2,j,k))
-      fy(i,j,k)=d12dy*(fh(i,j-2,k)-EIT*fh(i,j-1,k)+EIT*fh(i,j+1,k)-fh(i,j+2,k))
-      fz(i,j,k)=d12dz*(fh(i,j,k-2)-EIT*fh(i,j,k-1)+EIT*fh(i,j,k+1)-fh(i,j,k+2))
-   elseif(i+1 <= imax .and. i-1 >= imin .and. &
-          j+1 <= jmax .and. j-1 >= jmin .and. &
-          k+1 <= kmax .and. k-1 >= kmin) then
-      fx(i,j,k)=d2dx*(-fh(i-1,j,k)+fh(i+1,j,k))
-      fy(i,j,k)=d2dy*(-fh(i,j-1,k)+fh(i,j+1,k))
-      fz(i,j,k)=d2dz*(-fh(i,j,k-1)+fh(i,j,k+1))
-   endif
-#endif
-  enddo
-  enddo
+  !$OMP PARALLEL DO PRIVATE(kk,jj,ii,i,j,k) COLLAPSE(3) DEFAULT(SHARED)
+  do kk=1,ex(3)-1, TILE_K
+    do jj=1,ex(2)-1, TILE_J
+      do ii=1,ex(1)-1, TILE_I
+        do k=kk, min(kk+TILE_K-1,ex(3)-1)
+          do j=jj, min(jj+TILE_J,ex(2)-1)
+            !$OMP SIMD
+            do i=ii, min(ii+TILE_I,ex(1)-1)
+              if(i+2 <= imax .and. i-2 >= imin .and. &
+                j+2 <= jmax .and. j-2 >= jmin .and. &
+                k+2 <= kmax .and. k-2 >= kmin) then
+                fx(i,j,k)=d12dx*(fh(i-2,j,k)-EIT*fh(i-1,j,k)+EIT*fh(i+1,j,k)-fh(i+2,j,k))
+                fy(i,j,k)=d12dy*(fh(i,j-2,k)-EIT*fh(i,j-1,k)+EIT*fh(i,j+1,k)-fh(i,j+2,k))
+                fz(i,j,k)=d12dz*(fh(i,j,k-2)-EIT*fh(i,j,k-1)+EIT*fh(i,j,k+1)-fh(i,j,k+2))
+              elseif(i+1 <= imax .and. i-1 >= imin .and. &
+                    j+1 <= jmax .and. j-1 >= jmin .and. &
+                    k+1 <= kmax .and. k-1 >= kmin) then
+                fx(i,j,k)=d2dx*(-fh(i-1,j,k)+fh(i+1,j,k))
+                fy(i,j,k)=d2dy*(-fh(i,j-1,k)+fh(i,j+1,k))
+                fz(i,j,k)=d2dz*(-fh(i,j,k-1)+fh(i,j,k+1))
+              endif
+            enddo
+          enddo
+        enddo
+      enddo
+    enddo
   enddo
 
   return
@@ -1348,7 +1275,7 @@
   real*8 :: dX,dY,dZ
   real*8,dimension(-1:ex(1),-1:ex(2),-1:ex(3))   :: fh
   real*8, dimension(3) :: SoA
-  integer :: imin,jmin,kmin,imax,jmax,kmax,i,j,k
+  integer :: imin,jmin,kmin,imax,jmax,kmax,i,j,k,ii,jj,kk
   real*8  :: Sdxdx,Sdydy,Sdzdz,Fdxdx,Fdydy,Fdzdz
   real*8  :: Sdxdy,Sdxdz,Sdydz,Fdxdy,Fdxdz,Fdydz
   integer, parameter :: NO_SYMM = 0, EQ_SYMM = 1, OCTANT = 2
@@ -1356,6 +1283,7 @@
   real*8, parameter :: F8=8.d0, F16=1.6d1, F30=3.d1, F27=2.7d1, F270=2.7d2, F490=4.9d2
   real*8, parameter :: F1o6=ONE/6.d0, F1o12=ONE/1.2d1, F1o144=ONE/1.44d2
   real*8, parameter :: F1o180=ONE/1.8d2,F1o3600=ONE/3.6d3
+  integer, parameter :: TILE_I=32, TILE_J=32, TILE_K=8
 
   dX = X(2)-X(1)
   dY = Y(2)-Y(1)
@@ -1401,127 +1329,55 @@
   fxz = ZEO
   fyz = ZEO
 
-  do k=1,ex(3)-1
-  do j=1,ex(2)-1
-  do i=1,ex(1)-1
-#if 0  
-!~~~~~~ fxx
-        if(i+2 <= imax .and. i-2 >= imin)then
-!
-!               - f(i-2) + 16 f(i-1) - 30 f(i) + 16 f(i+1) - f(i+2)
-!  fxx(i) = ----------------------------------------------------------
-!                                  12 dx^2 
-   fxx(i,j,k) = Fdxdx*(-fh(i-2,j,k)+F16*fh(i-1,j,k)-F30*fh(i,j,k) &
-                       -fh(i+2,j,k)+F16*fh(i+1,j,k)              )
-   elseif(i+1 <= imax .and. i-1 >= imin)then
-!
-!               f(i-1) - 2 f(i) + f(i+1)
-!  fxx(i) = --------------------------------
-!                         dx^2 
-   fxx(i,j,k) = Sdxdx*(fh(i-1,j,k)-TWO*fh(i,j,k) &
-                      +fh(i+1,j,k)              )
-   endif
+  !$OMP PARALLEL DO PRIVATE(kk,jj,ii,i,j,k) COLLAPSE(3) DEFAULT(SHARED)
+  do kk=1,ex(3)-1,TILE_K
+    do jj=1,ex(2)-1,TILE_J
+      do ii=1,ex(1)-1,TILE_I
 
-
-!~~~~~~ fyy
-        if(j+2 <= jmax .and. j-2 >= jmin)then
-
-   fyy(i,j,k) = Fdydy*(-fh(i,j-2,k)+F16*fh(i,j-1,k)-F30*fh(i,j,k) &
-                       -fh(i,j+2,k)+F16*fh(i,j+1,k)              )
-   elseif(j+1 <= jmax .and. j-1 >= jmin)then
-
-   fyy(i,j,k) = Sdydy*(fh(i,j-1,k)-TWO*fh(i,j,k) &
-                      +fh(i,j+1,k)              )
-   endif
-
-!~~~~~~ fzz
-        if(k+2 <= kmax .and. k-2 >= kmin)then
-
-   fzz(i,j,k) = Fdzdz*(-fh(i,j,k-2)+F16*fh(i,j,k-1)-F30*fh(i,j,k) &
-                       -fh(i,j,k+2)+F16*fh(i,j,k+1)              )
-   elseif(k+1 <= kmax .and. k-1 >= kmin)then
-
-   fzz(i,j,k) = Sdzdz*(fh(i,j,k-1)-TWO*fh(i,j,k) &
-                      +fh(i,j,k+1)              )
-   endif
-!~~~~~~ fxy
-       if(i+2 <= imax .and. i-2 >= imin .and. j+2 <= jmax .and. j-2 >= jmin)then
-!
-!                 ( f(i-2,j-2) - 8 f(i-1,j-2) + 8 f(i+1,j-2) - f(i+2,j-2) )
-!             - 8 ( f(i-2,j-1) - 8 f(i-1,j-1) + 8 f(i+1,j-1) - f(i+2,j-1) )
-!             + 8 ( f(i-2,j+1) - 8 f(i-1,j+1) + 8 f(i+1,j+1) - f(i+2,j+1) )
-!             -   ( f(i-2,j+2) - 8 f(i-1,j+2) + 8 f(i+1,j+2) - f(i+2,j+2) )
-!  fxy(i,j) = ----------------------------------------------------------------
-!                                  144 dx dy
-   fxy(i,j,k) = Fdxdy*(     (fh(i-2,j-2,k)-F8*fh(i-1,j-2,k)+F8*fh(i+1,j-2,k)-fh(i+2,j-2,k))  &
-                       -F8 *(fh(i-2,j-1,k)-F8*fh(i-1,j-1,k)+F8*fh(i+1,j-1,k)-fh(i+2,j-1,k))  &
-                       +F8 *(fh(i-2,j+1,k)-F8*fh(i-1,j+1,k)+F8*fh(i+1,j+1,k)-fh(i+2,j+1,k))  &
-                       -    (fh(i-2,j+2,k)-F8*fh(i-1,j+2,k)+F8*fh(i+1,j+2,k)-fh(i+2,j+2,k)))
-
-   elseif(i+1 <= imax .and. i-1 >= imin .and. j+1 <= jmax .and. j-1 >= jmin)then
-!                 f(i-1,j-1) - f(i+1,j-1) - f(i-1,j+1) + f(i+1,j+1) 
-!  fxy(i,j) = -----------------------------------------------------------
-!                                      4 dx dy
-   fxy(i,j,k) = Sdxdy*(fh(i-1,j-1,k)-fh(i+1,j-1,k)-fh(i-1,j+1,k)+fh(i+1,j+1,k))
-   endif
-!~~~~~~ fxz
-       if(i+2 <= imax .and. i-2 >= imin .and. k+2 <= kmax .and. k-2 >= kmin)then
-   fxz(i,j,k) = Fdxdz*(     (fh(i-2,j,k-2)-F8*fh(i-1,j,k-2)+F8*fh(i+1,j,k-2)-fh(i+2,j,k-2))  &
-                       -F8 *(fh(i-2,j,k-1)-F8*fh(i-1,j,k-1)+F8*fh(i+1,j,k-1)-fh(i+2,j,k-1))  &
-                       +F8 *(fh(i-2,j,k+1)-F8*fh(i-1,j,k+1)+F8*fh(i+1,j,k+1)-fh(i+2,j,k+1))  &
-                       -    (fh(i-2,j,k+2)-F8*fh(i-1,j,k+2)+F8*fh(i+1,j,k+2)-fh(i+2,j,k+2)))
-   elseif(i+1 <= imax .and. i-1 >= imin .and. k+1 <= kmax .and. k-1 >= kmin)then
-   fxz(i,j,k) = Sdxdz*(fh(i-1,j,k-1)-fh(i+1,j,k-1)-fh(i-1,j,k+1)+fh(i+1,j,k+1))
-   endif
-!~~~~~~ fyz
-       if(j+2 <= jmax .and. j-2 >= jmin .and. k+2 <= kmax .and. k-2 >= kmin)then
-   fyz(i,j,k) = Fdydz*(     (fh(i,j-2,k-2)-F8*fh(i,j-1,k-2)+F8*fh(i,j+1,k-2)-fh(i,j+2,k-2))  &
-                       -F8 *(fh(i,j-2,k-1)-F8*fh(i,j-1,k-1)+F8*fh(i,j+1,k-1)-fh(i,j+2,k-1))  &
-                       +F8 *(fh(i,j-2,k+1)-F8*fh(i,j-1,k+1)+F8*fh(i,j+1,k+1)-fh(i,j+2,k+1))  &
-                       -    (fh(i,j-2,k+2)-F8*fh(i,j-1,k+2)+F8*fh(i,j+1,k+2)-fh(i,j+2,k+2)))
-   elseif(j+1 <= jmax .and. j-1 >= jmin .and. k+1 <= kmax .and. k-1 >= kmin)then
-   fyz(i,j,k) = Sdydz*(fh(i,j-1,k-1)-fh(i,j+1,k-1)-fh(i,j-1,k+1)+fh(i,j+1,k+1))
-   endif 
-#else
-! for bam comparison
-   if(i+2 <= imax .and. i-2 >= imin .and. &
-      j+2 <= jmax .and. j-2 >= jmin .and. &
-      k+2 <= kmax .and. k-2 >= kmin) then
-   fxx(i,j,k) = Fdxdx*(-fh(i-2,j,k)+F16*fh(i-1,j,k)-F30*fh(i,j,k) &
-                       -fh(i+2,j,k)+F16*fh(i+1,j,k)              )
-   fyy(i,j,k) = Fdydy*(-fh(i,j-2,k)+F16*fh(i,j-1,k)-F30*fh(i,j,k) &
-                       -fh(i,j+2,k)+F16*fh(i,j+1,k)              )
-   fzz(i,j,k) = Fdzdz*(-fh(i,j,k-2)+F16*fh(i,j,k-1)-F30*fh(i,j,k) &
-                       -fh(i,j,k+2)+F16*fh(i,j,k+1)              )
-   fxy(i,j,k) = Fdxdy*(     (fh(i-2,j-2,k)-F8*fh(i-1,j-2,k)+F8*fh(i+1,j-2,k)-fh(i+2,j-2,k))  &
-                       -F8 *(fh(i-2,j-1,k)-F8*fh(i-1,j-1,k)+F8*fh(i+1,j-1,k)-fh(i+2,j-1,k))  &
-                       +F8 *(fh(i-2,j+1,k)-F8*fh(i-1,j+1,k)+F8*fh(i+1,j+1,k)-fh(i+2,j+1,k))  &
-                       -    (fh(i-2,j+2,k)-F8*fh(i-1,j+2,k)+F8*fh(i+1,j+2,k)-fh(i+2,j+2,k)))
-   fxz(i,j,k) = Fdxdz*(     (fh(i-2,j,k-2)-F8*fh(i-1,j,k-2)+F8*fh(i+1,j,k-2)-fh(i+2,j,k-2))  &
-                       -F8 *(fh(i-2,j,k-1)-F8*fh(i-1,j,k-1)+F8*fh(i+1,j,k-1)-fh(i+2,j,k-1))  &
-                       +F8 *(fh(i-2,j,k+1)-F8*fh(i-1,j,k+1)+F8*fh(i+1,j,k+1)-fh(i+2,j,k+1))  &
-                       -    (fh(i-2,j,k+2)-F8*fh(i-1,j,k+2)+F8*fh(i+1,j,k+2)-fh(i+2,j,k+2)))
-   fyz(i,j,k) = Fdydz*(     (fh(i,j-2,k-2)-F8*fh(i,j-1,k-2)+F8*fh(i,j+1,k-2)-fh(i,j+2,k-2))  &
-                       -F8 *(fh(i,j-2,k-1)-F8*fh(i,j-1,k-1)+F8*fh(i,j+1,k-1)-fh(i,j+2,k-1))  &
-                       +F8 *(fh(i,j-2,k+1)-F8*fh(i,j-1,k+1)+F8*fh(i,j+1,k+1)-fh(i,j+2,k+1))  &
-                       -    (fh(i,j-2,k+2)-F8*fh(i,j-1,k+2)+F8*fh(i,j+1,k+2)-fh(i,j+2,k+2)))
-   elseif(i+1 <= imax .and. i-1 >= imin .and. &
-          j+1 <= jmax .and. j-1 >= jmin .and. &
-          k+1 <= kmax .and. k-1 >= kmin) then
-   fxx(i,j,k) = Sdxdx*(fh(i-1,j,k)-TWO*fh(i,j,k) &
-                      +fh(i+1,j,k)              )
-   fyy(i,j,k) = Sdydy*(fh(i,j-1,k)-TWO*fh(i,j,k) &
-                      +fh(i,j+1,k)              )
-   fzz(i,j,k) = Sdzdz*(fh(i,j,k-1)-TWO*fh(i,j,k) &
-                      +fh(i,j,k+1)              )
-   fxy(i,j,k) = Sdxdy*(fh(i-1,j-1,k)-fh(i+1,j-1,k)-fh(i-1,j+1,k)+fh(i+1,j+1,k))
-   fxz(i,j,k) = Sdxdz*(fh(i-1,j,k-1)-fh(i+1,j,k-1)-fh(i-1,j,k+1)+fh(i+1,j,k+1))
-   fyz(i,j,k) = Sdydz*(fh(i,j-1,k-1)-fh(i,j+1,k-1)-fh(i,j-1,k+1)+fh(i,j+1,k+1))
-   endif
-#endif
-   enddo
-   enddo
-   enddo
+        do k = kk, min(kk+TILE_K-1, ex(3)-1)
+          do j = jj, min(jj+TILE_J-1, ex(2)-1)
+            !$OMP SIMD
+            do i = ii, min(ii+TILE_I-1, ex(1)-1)
+              if(i+2 <= imax .and. i-2 >= imin .and. &
+                  j+2 <= jmax .and. j-2 >= jmin .and. &
+                  k+2 <= kmax .and. k-2 >= kmin) then
+              fxx(i,j,k) = Fdxdx*(-fh(i-2,j,k)+F16*fh(i-1,j,k)-F30*fh(i,j,k) &
+                                  -fh(i+2,j,k)+F16*fh(i+1,j,k)              )
+              fyy(i,j,k) = Fdydy*(-fh(i,j-2,k)+F16*fh(i,j-1,k)-F30*fh(i,j,k) &
+                                  -fh(i,j+2,k)+F16*fh(i,j+1,k)              )
+              fzz(i,j,k) = Fdzdz*(-fh(i,j,k-2)+F16*fh(i,j,k-1)-F30*fh(i,j,k) &
+                                  -fh(i,j,k+2)+F16*fh(i,j,k+1)              )
+              fxy(i,j,k) = Fdxdy*(     (fh(i-2,j-2,k)-F8*fh(i-1,j-2,k)+F8*fh(i+1,j-2,k)-fh(i+2,j-2,k))  &
+                                  -F8 *(fh(i-2,j-1,k)-F8*fh(i-1,j-1,k)+F8*fh(i+1,j-1,k)-fh(i+2,j-1,k))  &
+                                  +F8 *(fh(i-2,j+1,k)-F8*fh(i-1,j+1,k)+F8*fh(i+1,j+1,k)-fh(i+2,j+1,k))  &
+                                  -    (fh(i-2,j+2,k)-F8*fh(i-1,j+2,k)+F8*fh(i+1,j+2,k)-fh(i+2,j+2,k)))
+              fxz(i,j,k) = Fdxdz*(     (fh(i-2,j,k-2)-F8*fh(i-1,j,k-2)+F8*fh(i+1,j,k-2)-fh(i+2,j,k-2))  &
+                                  -F8 *(fh(i-2,j,k-1)-F8*fh(i-1,j,k-1)+F8*fh(i+1,j,k-1)-fh(i+2,j,k-1))  &
+                                  +F8 *(fh(i-2,j,k+1)-F8*fh(i-1,j,k+1)+F8*fh(i+1,j,k+1)-fh(i+2,j,k+1))  &
+                                  -    (fh(i-2,j,k+2)-F8*fh(i-1,j,k+2)+F8*fh(i+1,j,k+2)-fh(i+2,j,k+2)))
+              fyz(i,j,k) = Fdydz*(     (fh(i,j-2,k-2)-F8*fh(i,j-1,k-2)+F8*fh(i,j+1,k-2)-fh(i,j+2,k-2))  &
+                                  -F8 *(fh(i,j-2,k-1)-F8*fh(i,j-1,k-1)+F8*fh(i,j+1,k-1)-fh(i,j+2,k-1))  &
+                                  +F8 *(fh(i,j-2,k+1)-F8*fh(i,j-1,k+1)+F8*fh(i,j+1,k+1)-fh(i,j+2,k+1))  &
+                                  -    (fh(i,j-2,k+2)-F8*fh(i,j-1,k+2)+F8*fh(i,j+1,k+2)-fh(i,j+2,k+2)))
+              elseif(i+1 <= imax .and. i-1 >= imin .and. &
+                      j+1 <= jmax .and. j-1 >= jmin .and. &
+                      k+1 <= kmax .and. k-1 >= kmin) then
+              fxx(i,j,k) = Sdxdx*(fh(i-1,j,k)-TWO*fh(i,j,k) &
+                                  +fh(i+1,j,k)              )
+              fyy(i,j,k) = Sdydy*(fh(i,j-1,k)-TWO*fh(i,j,k) &
+                                  +fh(i,j+1,k)              )
+              fzz(i,j,k) = Sdzdz*(fh(i,j,k-1)-TWO*fh(i,j,k) &
+                                  +fh(i,j,k+1)              )
+              fxy(i,j,k) = Sdxdy*(fh(i-1,j-1,k)-fh(i+1,j-1,k)-fh(i-1,j+1,k)+fh(i+1,j+1,k))
+              fxz(i,j,k) = Sdxdz*(fh(i-1,j,k-1)-fh(i+1,j,k-1)-fh(i-1,j,k+1)+fh(i+1,j,k+1))
+              fyz(i,j,k) = Sdydz*(fh(i,j-1,k-1)-fh(i,j+1,k-1)-fh(i,j-1,k+1)+fh(i,j+1,k+1))
+              endif
+            enddo
+          enddo
+        enddo
+      enddo
+    enddo
+  enddo
 
   return
 
